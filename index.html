@@ -43,7 +43,7 @@
 </head>
 <body class="bg-light">
     <!-- Name Prompt Modal -->
-    <div id="nameModal" class="modal fade show d-block" tabindex="-1" aria-labelledby="nameModalLabel" aria-hidden="true">
+    <div id="nameModal" class="modal fade" tabindex="-1" aria-labelledby="nameModalLabel">
         <div class="modal-dialog modal-dialog-centered">
             <div class="modal-content">
                 <div class="modal-header">
@@ -95,290 +95,315 @@
 
     <!-- App Logic -->
     <script>
-        (function () {
-            // DOM Elements
-            const nameModal = document.getElementById('nameModal');
-            const nameInput = document.getElementById('nameInput');
-            const nameSubmit = document.getElementById('nameSubmit');
-            const chatContainer = document.getElementById('chatContainer');
-            const userName = document.getElementById('userName');
-            const messages = document.getElementById('messages');
-            const messageForm = document.getElementById('messageForm');
-            const messageInput = document.getElementById('messageInput');
-            const typingIndicator = document.getElementById('typingIndicator');
-            const emojiButton = document.getElementById('emojiButton');
-            const emojiPicker = document.getElementById('emojiPicker');
-            const clearName = document.getElementById('clearName');
-            const unreadBadge = document.getElementById('unreadBadge');
+        document.addEventListener('DOMContentLoaded', () => {
+            (function () {
+                // DOM Elements
+                const nameModal = document.getElementById('nameModal');
+                const nameInput = document.getElementById('nameInput');
+                const nameSubmit = document.getElementById('nameSubmit');
+                const chatContainer = document.getElementById('chatContainer');
+                const userName = document.getElementById('userName');
+                const messages = document.getElementById('messages');
+                const messageForm = document.getElementById('messageForm');
+                const messageInput = document.getElementById('messageInput');
+                const typingIndicator = document.getElementById('typingIndicator');
+                const emojiButton = document.getElementById('emojiButton');
+                const emojiPicker = document.getElementById('emojiPicker');
+                const clearName = document.getElementById('clearName');
+                const unreadBadge = document.getElementById('unreadBadge');
 
-            // State
-            let displayName = localStorage.getItem('chatDisplayName') || '';
-            const userId = localStorage.getItem('chatUserId') || Math.random().toString(36).substring(2);
-            localStorage.setItem('chatUserId', userId);
-            let isTyping = false;
-            let unreadCount = 0;
+                // State
+                let displayName = localStorage.getItem('chatDisplayName') || '';
+                const userId = localStorage.getItem('chatUserId') || Math.random().toString(36).substring(2);
+                localStorage.setItem('chatUserId', userId);
+                let isTyping = false;
+                let unreadCount = 0;
 
-            // Core Functions
-            function saveMessagesLocally(messages) {
-                localStorage.setItem('chatMessages', JSON.stringify(messages.slice(-50)));
-            }
+                // Core Functions
+                function saveMessagesLocally(messages) {
+                    localStorage.setItem('chatMessages', JSON.stringify(messages.slice(-50)));
+                }
 
-            function loadMessagesLocally() {
-                return JSON.parse(localStorage.getItem('chatMessages') || '[]');
-            }
+                function loadMessagesLocally() {
+                    return JSON.parse(localStorage.getItem('chatMessages') || '[]');
+                }
 
-            function generateAvatar(displayName) {
-                const hash = Array.from(displayName).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                const hue = hash % 360;
-                return `background: hsl(${hue}, 70%, 50%); color: white; text-align: center; line-height: 30px;`;
-            }
+                function generateAvatar(displayName) {
+                    const hash = Array.from(displayName).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                    const hue = hash % 360;
+                    return `background: hsl(${hue}, 70%, 50%); color: white; text-align: center; line-height: 30px;`;
+                }
 
-            function getStatusIcon(status) {
-                if (status === 'read') return '<i class="fas fa-check-double text-primary"></i>';
-                if (status === 'delivered') return '<i class="fas fa-check-double text-muted"></i>';
-                return '<i class="fas fa-check text-muted"></i>';
-            }
+                function getStatusIcon(status) {
+                    if (status === 'read') return '<i class="fas fa-check-double text-primary"></i>';
+                    if (status === 'delivered') return '<i class="fas fa-check-double text-muted"></i>';
+                    return '<i class="fas fa-check text-muted"></i>';
+                }
 
-            function displayMessage(id, msg, currentDisplayName) {
-                const isOwn = msg.displayName === currentDisplayName;
-                const div = document.createElement('div');
-                div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
-                const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                div.innerHTML = `
-                    <div class="d-flex justify-content-between align-items-center">
+                function displayMessage(id, msg, currentDisplayName) {
+                    const isOwn = msg.displayName === currentDisplayName;
+                    const div = document.createElement('div');
+                    div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
+                    const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    div.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div class="d-flex align-items-center">
+                                <span class="avatar me-2" style="${generateAvatar(msg.displayName)}">${msg.displayName[0]}</span>
+                                <strong>${msg.displayName}</strong>
+                            </div>
+                            <small class="text-muted">${time}</small>
+                        </div>
+                        <p class="mb-1">${msg.text}</p>
                         <div class="d-flex align-items-center">
-                            <span class="avatar me-2" style="${generateAvatar(msg.displayName)}">${msg.displayName[0]}</span>
-                            <strong>${msg.displayName}</strong>
+                            ${msg.reactions.map((r) => `<span class="me-1">${r.reaction}</span>`).join('')}
+                            <button class="btn btn-sm btn-link p-0 me-2" onclick="addReaction('${id}')" data-bs-toggle="tooltip" title="Like"><i class="fas fa-thumbs-up"></i></button>
+                            ${isOwn ? `<button class="btn btn-sm btn-link p-0" onclick="deleteMessage('${id}')" data-bs-toggle="tooltip" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+                            ${isOwn ? `<span class="ms-2">${getStatusIcon(msg.status)}</span>` : ''}
                         </div>
-                        <small class="text-muted">${time}</small>
-                    </div>
-                    <p class="mb-1">${msg.text}</p>
-                    <div class="d-flex align-items-center">
-                        ${msg.reactions.map((r) => `<span class="me-1">${r.reaction}</span>`).join('')}
-                        <button class="btn btn-sm btn-link p-0 me-2" onclick="addReaction('${id}')" data-bs-toggle="tooltip" title="Like"><i class="fas fa-thumbs-up"></i></button>
-                        ${isOwn ? `<button class="btn btn-sm btn-link p-0" onclick="deleteMessage('${id}')" data-bs-toggle="tooltip" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
-                        ${isOwn ? `<span class="ms-2">${getStatusIcon(msg.status)}</span>` : ''}
-                    </div>
-                `;
-                messages.appendChild(div);
-            }
-
-            async function sendMessage(text, displayName, userId) {
-                if (text.trim()) {
-                    const messageRef = await window.db.collection('messages').add({
-                        text,
-                        createdAt: new Date(),
-                        displayName,
-                        reactions: [],
-                        status: 'sent',
-                        recipientIds: [],
-                    });
-                    await window.db.collection('users').doc(userId).update({
-                        isTyping: false,
-                        lastSeen: new Date(),
-                    });
-                    return messageRef.id;
-                }
-            }
-
-            async function addReaction(messageId) {
-                const messageRef = window.db.collection('messages').doc(messageId);
-                await messageRef.update({
-                    reactions: window.db.FieldValue.arrayUnion({ reaction: '👍' }),
-                });
-            }
-
-            async function deleteMessage(messageId) {
-                await window.db.collection('messages').doc(messageId).delete();
-            }
-
-            function updateOnlineUsers(users, currentDisplayName) {
-                const onlineUsers = document.getElementById('onlineUsers');
-                onlineUsers.innerHTML = '';
-                users.forEach(({ displayName, isTyping, lastSeen }) => {
-                    const li = document.createElement('li');
-                    li.className = 'list-group-item d-flex align-items-center';
-                    const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                    li.innerHTML = `
-                        <span class="avatar me-2" style="${generateAvatar(displayName)}">${displayName[0]}</span>
-                        <div>
-                            <div>${displayName === currentDisplayName ? `${displayName} (You)` : displayName}</div>
-                            <small class="text-muted">Last seen: ${lastSeenTime}</small>
-                        </div>
-                        <i class="fas fa-circle text-success ms-auto ${isTyping ? 'fa-beat' : ''}"></i>
                     `;
-                    onlineUsers.appendChild(li);
-                });
-            }
-
-            function showNotification(message) {
-                if (document.hidden && Notification.permission === 'granted') {
-                    const time = message.createdAt ? new Date(message.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-                    new Notification('ProChat', {
-                        body: `${message.displayName}: ${message.text} (${time})`,
-                        icon: 'https://via.placeholder.com/32',
-                    });
+                    messages.appendChild(div);
                 }
-                if (document.hidden && message.displayName !== displayName) {
-                    unreadCount++;
-                    unreadBadge.textContent = unreadCount;
-                    unreadBadge.style.display = 'inline';
-                }
-            }
 
-            // Expose global functions
-            window.addReaction = addReaction;
-            window.deleteMessage = deleteMessage;
-
-            // Load local messages
-            const localMessages = loadMessagesLocally();
-            localMessages.forEach((msg) => displayMessage(msg.id || Math.random().toString(36), msg, displayName));
-
-            // Initialize Bootstrap tooltips
-            const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-            tooltipTriggerList.forEach((el) => new bootstrap.Tooltip(el));
-
-            // Emoji picker
-            emojiButton.onclick = () => {
-                emojiPicker.classList.toggle('d-none');
-            };
-            emojiPicker.querySelectorAll('.emoji').forEach((emoji) => {
-                emoji.onclick = () => {
-                    messageInput.value += emoji.dataset.emoji;
-                    emojiPicker.classList.add('d-none');
-                    messageInput.focus();
-                };
-            });
-
-            // Request notification permission
-            if (Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-
-            // Reset unread count when tab becomes active
-            document.addEventListener('visibilitychange', () => {
-                if (!document.hidden) {
-                    unreadCount = 0;
-                    unreadBadge.style.display = 'none';
-                    unreadBadge.textContent = '';
-                }
-            });
-
-            // Handle name persistence
-            if (displayName) {
-                nameModal.classList.remove('d-block');
-                chatContainer.style.display = 'block';
-                userName.textContent = `You: ${displayName}`;
-                initializeChat();
-            } else {
-                nameInput.focus();
-            }
-
-            // Handle name submission
-            nameSubmit.onclick = () => {
-                displayName = nameInput.value.trim();
-                if (displayName) {
-                    localStorage.setItem('chatDisplayName', displayName);
-                    nameModal.classList.remove('d-block');
-                    chatContainer.style.display = 'block';
-                    userName.textContent = `You: ${displayName}`;
-                    initializeChat();
-                } else {
-                    alert('Please enter a name!');
-                }
-            };
-
-            // Handle clear name
-            clearName.onclick = () => {
-                localStorage.removeItem('chatDisplayName');
-                window.location.reload();
-            };
-
-            async function initializeChat() {
-                // Set user online
-                await window.db.collection('users').doc(userId).set({
-                    displayName,
-                    isTyping: false,
-                    online: true,
-                    lastSeen: new Date(),
-                });
-
-                // Clean up on unload
-                window.addEventListener('beforeunload', () => {
-                    window.db.collection('users').doc(userId).update({
-                        online: false,
-                        lastSeen: new Date(),
-                    });
-                });
-
-                // Fetch messages
-                window.db.collection('messages')
-                    .orderBy('createdAt')
-                    .limit(50)
-                    .onSnapshot((snapshot) => {
-                        messages.innerHTML = '';
-                        const fetchedMessages = [];
-                        snapshot.forEach((doc) => {
-                            const msg = { id: doc.id, ...doc.data() };
-                            displayMessage(doc.id, msg, displayName);
-                            fetchedMessages.push(msg);
-                            showNotification(msg);
-                            // Update status to delivered/read
-                            if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
-                                window.db.collection('messages').doc(doc.id).update({
-                                    status: document.hidden ? 'delivered' : 'read',
-                                    recipientIds: window.db.FieldValue.arrayUnion(userId),
-                                });
-                            }
+                async function sendMessage(text, displayName, userId) {
+                    if (text.trim()) {
+                        const messageRef = await window.db.collection('messages').add({
+                            text,
+                            createdAt: new Date(),
+                            displayName,
+                            reactions: [],
+                            status: 'sent',
+                            recipientIds: [],
                         });
-                        saveMessagesLocally(fetchedMessages);
-                        messages.scrollTop = messages.scrollHeight;
-                    });
-
-                // Fetch online users and typing indicators
-                window.db.collection('users')
-                    .where('online', '==', true)
-                    .onSnapshot((snapshot) => {
-                        const users = [];
-                        const typingUsers = [];
-                        snapshot.forEach((doc) => {
-                            const data = doc.data();
-                            users.push(data);
-                            if (data.isTyping && data.displayName !== displayName) {
-                                typingUsers.push(data.displayName);
-                            }
-                        });
-                        updateOnlineUsers(users, displayName);
-                        if (typingUsers.length > 0) {
-                            typingIndicator.textContent = `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`;
-                            typingIndicator.classList.remove('d-none');
-                        } else {
-                            typingIndicator.classList.add('d-none');
-                        }
-                    });
-
-                // Handle message submission
-                messageForm.onsubmit = (e) => {
-                    e.preventDefault();
-                    sendMessage(messageInput.value, displayName, userId);
-                    messageInput.value = '';
-                    isTyping = false;
-                    emojiPicker.classList.add('d-none');
-                };
-
-                // Handle typing
-                messageInput.oninput = () => {
-                    const typing = messageInput.value.trim() !== '';
-                    if (typing !== isTyping) {
-                        isTyping = typing;
-                        window.db.collection('users').doc(userId).update({
-                            isTyping,
+                        await window.db.collection('users').doc(userId).update({
+                            isTyping: false,
                             lastSeen: new Date(),
                         });
+                        return messageRef.id;
+                    }
+                }
+
+                async function addReaction(messageId) {
+                    const messageRef = window.db.collection('messages').doc(messageId);
+                    await messageRef.update({
+                        reactions: window.db.FieldValue.arrayUnion({ reaction: '👍' }),
+                    });
+                }
+
+                async function deleteMessage(messageId) {
+                    await window.db.collection('messages').doc(messageId).delete();
+                }
+
+                function updateOnlineUsers(users, currentDisplayName) {
+                    const onlineUsers = document.getElementById('onlineUsers');
+                    onlineUsers.innerHTML = '';
+                    users.forEach(({ displayName, isTyping, lastSeen }) => {
+                        const li = document.createElement('li');
+                        li.className = 'list-group-item d-flex align-items-center';
+                        const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        li.innerHTML = `
+                            <span class="avatar me-2" style="${generateAvatar(displayName)}">${displayName[0]}</span>
+                            <div>
+                                <div>${displayName === currentDisplayName ? `${displayName} (You)` : displayName}</div>
+                                <small class="text-muted">Last seen: ${lastSeenTime}</small>
+                            </div>
+                            <i class="fas fa-circle text-success ms-auto ${isTyping ? 'fa-beat' : ''}"></i>
+                        `;
+                        onlineUsers.appendChild(li);
+                    });
+                }
+
+                function showNotification(message) {
+                    if (document.hidden && Notification.permission === 'granted') {
+                        const time = message.createdAt ? new Date(message.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        new Notification('ProChat', {
+                            body: `${message.displayName}: ${message.text} (${time})`,
+                            icon: 'https://via.placeholder.com/32',
+                        });
+                    }
+                    if (document.hidden && message.displayName !== displayName) {
+                        unreadCount++;
+                        unreadBadge.textContent = unreadCount;
+                        unreadBadge.style.display = 'inline';
+                    }
+                }
+
+                // Expose global functions
+                window.addReaction = addReaction;
+                window.deleteMessage = deleteMessage;
+
+                // Load local messages
+                const localMessages = loadMessagesLocally();
+                localMessages.forEach((msg) => displayMessage(msg.id || Math.random().toString(36), msg, displayName));
+
+                // Initialize Bootstrap tooltips
+                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+                tooltipTriggerList.forEach((el) => new bootstrap.Tooltip(el));
+
+                // Emoji picker
+                emojiButton.onclick = () => {
+                    emojiPicker.classList.toggle('d-none');
+                };
+                emojiPicker.querySelectorAll('.emoji').forEach((emoji) => {
+                    emoji.onclick = () => {
+                        messageInput.value += emoji.dataset.emoji;
+                        emojiPicker.classList.add('d-none');
+                        messageInput.focus();
+                    };
+                });
+
+                // Request notification permission
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission();
+                }
+
+                // Reset unread count when tab becomes active
+                document.addEventListener('visibilitychange', () => {
+                    if (!document.hidden) {
+                        unreadCount = 0;
+                        unreadBadge.style.display = 'none';
+                        unreadBadge.textContent = '';
+                    }
+                });
+
+                // Wait for Firebase to initialize
+                async function waitForFirebase() {
+                    return new Promise((resolve, reject) => {
+                        let attempts = 0;
+                        const maxAttempts = 50;
+                        const interval = setInterval(() => {
+                            if (window.db) {
+                                clearInterval(interval);
+                                resolve();
+                            } else if (attempts >= maxAttempts) {
+                                clearInterval(interval);
+                                console.warn('Firebase failed to initialize');
+                                reject(new Error('Firebase not initialized'));
+                            }
+                            attempts++;
+                        }, 100);
+                    });
+                }
+
+                // Handle name persistence
+                if (displayName) {
+                    nameModal.setAttribute('inert', '');
+                    chatContainer.style.display = 'block';
+                    userName.textContent = `You: ${displayName}`;
+                    waitForFirebase().then(initializeChat).catch((err) => console.error(err));
+                } else {
+                    nameModal.classList.add('d-block');
+                    nameModal.removeAttribute('aria-hidden');
+                    nameInput.focus();
+                }
+
+                // Handle name submission
+                nameSubmit.onclick = () => {
+                    displayName = nameInput.value.trim();
+                    if (displayName) {
+                        localStorage.setItem('chatDisplayName', displayName);
+                        nameModal.classList.remove('d-block');
+                        nameModal.setAttribute('inert', '');
+                        nameModal.setAttribute('aria-hidden', 'true');
+                        chatContainer.style.display = 'block';
+                        userName.textContent = `You: ${displayName}`;
+                        waitForFirebase().then(initializeChat).catch((err) => console.error(err));
+                    } else {
+                        alert('Please enter a name!');
                     }
                 };
-            }
-        })();
+
+                // Handle clear name
+                clearName.onclick = () => {
+                    localStorage.removeItem('chatDisplayName');
+                    window.location.reload();
+                };
+
+                async function initializeChat() {
+                    // Set user online
+                    await window.db.collection('users').doc(userId).set({
+                        displayName,
+                        isTyping: false,
+                        online: true,
+                        lastSeen: new Date(),
+                    });
+
+                    // Clean up on unload
+                    window.addEventListener('beforeunload', () => {
+                        window.db.collection('users').doc(userId).update({
+                            online: false,
+                            lastSeen: new Date(),
+                        });
+                    });
+
+                    // Fetch messages
+                    window.db.collection('messages')
+                        .orderBy('createdAt')
+                        .limit(50)
+                        .onSnapshot((snapshot) => {
+                            messages.innerHTML = '';
+                            const fetchedMessages = [];
+                            snapshot.forEach((doc) => {
+                                const msg = { id: doc.id, ...doc.data() };
+                                displayMessage(doc.id, msg, displayName);
+                                fetchedMessages.push(msg);
+                                showNotification(msg);
+                                // Update status to delivered/read
+                                if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
+                                    window.db.collection('messages').doc(doc.id).update({
+                                        status: document.hidden ? 'delivered' : 'read',
+                                        recipientIds: window.db.FieldValue.arrayUnion(userId),
+                                    });
+                                }
+                            });
+                            saveMessagesLocally(fetchedMessages);
+                            messages.scrollTop = messages.scrollHeight;
+                        });
+
+                    // Fetch online users and typing indicators
+                    window.db.collection('users')
+                        .where('online', '==', true)
+                        .onSnapshot((snapshot) => {
+                            const users = [];
+                            const typingUsers = [];
+                            snapshot.forEach((doc) => {
+                                const data = doc.data();
+                                users.push(data);
+                                if (data.isTyping && data.displayName !== displayName) {
+                                    typingUsers.push(data.displayName);
+                                }
+                            });
+                            updateOnlineUsers(users, displayName);
+                            if (typingUsers.length > 0) {
+                                typingIndicator.textContent = `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`;
+                                typingIndicator.classList.remove('d-none');
+                            } else {
+                                typingIndicator.classList.add('d-none');
+                            }
+                        });
+
+                    // Handle message submission
+                    messageForm.onsubmit = (e) => {
+                        e.preventDefault();
+                        sendMessage(messageInput.value, displayName, userId);
+                        messageInput.value = '';
+                        isTyping = false;
+                        emojiPicker.classList.add('d-none');
+                    };
+
+                    // Handle typing
+                    messageInput.oninput = () => {
+                        const typing = messageInput.value.trim() !== '';
+                        if (typing !== isTyping) {
+                            isTyping = typing;
+                            window.db.collection('users').doc(userId).update({
+                                isTyping,
+                                lastSeen: new Date(),
+                            });
+                        }
+                    };
+                }
+            })();
+        });
     </script>
 </body>
 </html>
