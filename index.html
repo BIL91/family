@@ -8,9 +8,6 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- Font Awesome for Icons -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet">
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js"></script>
     <style>
         body { height: 100vh; overflow: hidden; }
         #chatContainer { display: none; height: 100vh; }
@@ -19,6 +16,8 @@
         .other-message { background-color: #f8f9fa; }
         #onlineUsers { max-height: 100%; overflow-y: auto; }
         .tooltip-inner { max-width: 200px; }
+        .avatar { width: 30px; height: 30px; border-radius: 50%; }
+        .emoji-picker { position: absolute; bottom: 70px; background: white; border: 1px solid #ccc; padding: 10px; }
     </style>
 </head>
 <body class="bg-light">
@@ -44,8 +43,9 @@
         <div class="row h-100">
             <!-- Online Users Sidebar -->
             <div class="col-3 bg-white border-end p-0">
-                <div class="p-3 bg-primary text-white">
+                <div class="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-users me-2"></i>Online Users</h5>
+                    <button id="clearName" class="btn btn-sm btn-outline-light" data-bs-toggle="tooltip" title="Change Name"><i class="fas fa-user-edit"></i></button>
                 </div>
                 <ul id="onlineUsers" class="list-group list-group-flush"></ul>
             </div>
@@ -57,7 +57,14 @@
                 </div>
                 <div id="messages" class="flex-grow-1 p-3 overflow-y-auto"></div>
                 <div id="typingIndicator" class="p-2 text-muted small d-none"></div>
-                <form id="messageForm" class="p-3 bg-white border-top d-flex">
+                <form id="messageForm" class="p-3 bg-white border-top d-flex position-relative">
+                    <button type="button" id="emojiButton" class="btn btn-link me-2"><i class="fas fa-smile"></i></button>
+                    <div id="emojiPicker" class="emoji-picker d-none">
+                        <span class="emoji" data-emoji="😊">😊</span>
+                        <span class="emoji" data-emoji="😂">😂</span>
+                        <span class="emoji" data-emoji="❤️">❤️</span>
+                        <span class="emoji" data-emoji="👍">👍</span>
+                    </div>
                     <input id="messageInput" type="text" class="form-control me-2" placeholder="Type a message..." aria-label="Message">
                     <button type="submit" id="sendButton" class="btn btn-primary"><i class="fas fa-paper-plane"></i></button>
                 </form>
@@ -65,91 +72,26 @@
         </div>
     </div>
 
-    <!-- Firebase Initialization -->
-    <script>
-        // Firebase config and initialization
+    <!-- Firebase Initialization (Modular) -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+
         const firebaseConfig = {
-            // Replace with your Firebase config
-            apiKey: "YOUR_API_KEY",
-            authDomain: "YOUR_AUTH_DOMAIN",
-            projectId: "YOUR_PROJECT_ID",
-            storageBucket: "YOUR_STORAGE_BUCKET",
-            messagingSenderId: "YOUR_MESSAGING_SENDER_ID",
-            appId: "YOUR_APP_ID"
+            apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
+            authDomain: "family-97053.firebaseapp.com",
+            projectId: "family-97053",
+            storageBucket: "family-97053.firebasestorage.app",
+            messagingSenderId: "681149504324",
+            appId: "1:681149504324:web:2aa2678d0085ceb0111511",
+            measurementId: "G-BJHE55FDVL"
         };
-        const app = firebase.initializeApp(firebaseConfig);
-        window.db = firebase.firestore(); // Expose db globally
+
+        const app = initializeApp(firebaseConfig);
+        window.db = getFirestore(app); // Expose Firestore globally
     </script>
 
-    <!-- Core Chat Functions -->
-    <script>
-        function saveMessagesLocally(messages) {
-            localStorage.setItem('chatMessages', JSON.stringify(messages.slice(-50)));
-        }
-
-        function loadMessagesLocally() {
-            return JSON.parse(localStorage.getItem('chatMessages') || '[]');
-        }
-
-        function displayMessage(id, msg, currentDisplayName) {
-            const messages = document.getElementById('messages');
-            const isOwn = msg.displayName === currentDisplayName;
-            const div = document.createElement('div');
-            div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
-            const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-            div.innerHTML = `
-                <div class="d-flex justify-content-between align-items-center">
-                    <strong>${msg.displayName}</strong>
-                    <small class="text-muted">${time}</small>
-                </div>
-                <p class="mb-1">${msg.text}</p>
-                <div class="d-flex align-items-center">
-                    ${msg.reactions.map((r) => `<span class="me-1">${r.reaction}</span>`).join('')}
-                    <button class="btn btn-sm btn-link p-0" onclick="addReaction('${id}')" data-bs-toggle="tooltip" title="Like"><i class="fas fa-thumbs-up"></i></button>
-                </div>
-            `;
-            messages.appendChild(div);
-        }
-
-        async function sendMessage(text, displayName, userId) {
-            if (text.trim()) {
-                const messageRef = await window.db.collection('messages').add({
-                    text,
-                    createdAt: new Date(),
-                    displayName,
-                    reactions: [],
-                });
-                await window.db.collection('users').doc(userId).update({
-                    isTyping: false,
-                    lastSeen: new Date(),
-                });
-                return messageRef.id;
-            }
-        }
-
-        async function addReaction(messageId) {
-            const messageRef = window.db.collection('messages').doc(messageId);
-            await messageRef.update({
-                reactions: firebase.firestore.FieldValue.arrayUnion({ reaction: '👍' }),
-            });
-        }
-
-        function updateOnlineUsers(users, currentDisplayName) {
-            const onlineUsers = document.getElementById('onlineUsers');
-            onlineUsers.innerHTML = '';
-            users.forEach(({ displayName, isTyping }) => {
-                const li = document.createElement('li');
-                li.className = 'list-group-item d-flex align-items-center';
-                li.innerHTML = `
-                    <i class="fas fa-circle text-success me-2 ${isTyping ? 'fa-beat' : ''}"></i>
-                    ${displayName === currentDisplayName ? `${displayName} (You)` : displayName}
-                `;
-                onlineUsers.appendChild(li);
-            });
-        }
-    </script>
-
-    <!-- Main App Logic -->
+    <!-- App Logic -->
     <script>
         (function () {
             // DOM Elements
@@ -162,14 +104,123 @@
             const messageForm = document.getElementById('messageForm');
             const messageInput = document.getElementById('messageInput');
             const typingIndicator = document.getElementById('typingIndicator');
+            const emojiButton = document.getElementById('emojiButton');
+            const emojiPicker = document.getElementById('emojiPicker');
+            const clearName = document.getElementById('clearName');
 
             // State
-            let displayName = '';
-            const userId = Math.random().toString(36).substring(2);
+            let displayName = localStorage.getItem('chatDisplayName') || '';
+            const userId = localStorage.getItem('chatUserId') || Math.random().toString(36).substring(2);
+            localStorage.setItem('chatUserId', userId);
             let isTyping = false;
 
-            // Expose addReaction globally
+            // Core Functions
+            function saveMessagesLocally(messages) {
+                localStorage.setItem('chatMessages', JSON.stringify(messages.slice(-50)));
+            }
+
+            function loadMessagesLocally() {
+                return JSON.parse(localStorage.getItem('chatMessages') || '[]');
+            }
+
+            function generateAvatar(displayName) {
+                const hash = Array.from(displayName).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const hue = hash % 360;
+                return `background: hsl(${hue}, 70%, 50%); color: white; text-align: center; line-height: 30px;`;
+            }
+
+            function getStatusIcon(status) {
+                if (status === 'read') return '<i class="fas fa-check-double text-primary"></i>';
+                if (status === 'delivered') return '<i class="fas fa-check-double text-muted"></i>';
+                return '<i class="fas fa-check text-muted"></i>';
+            }
+
+            function displayMessage(id, msg, currentDisplayName) {
+                const isOwn = msg.displayName === currentDisplayName;
+                const div = document.createElement('div');
+                div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
+                const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                div.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div class="d-flex align-items-center">
+                            <span class="avatar me-2" style="${generateAvatar(msg.displayName)}">${msg.displayName[0]}</span>
+                            <strong>${msg.displayName}</strong>
+                        </div>
+                        <small class="text-muted">${time}</small>
+                    </div>
+                    <p class="mb-1">${msg.text}</p>
+                    <div class="d-flex align-items-center">
+                        ${msg.reactions.map((r) => `<span class="me-1">${r.reaction}</span>`).join('')}
+                        <button class="btn btn-sm btn-link p-0 me-2" onclick="addReaction('${id}')" data-bs-toggle="tooltip" title="Like"><i class="fas fa-thumbs-up"></i></button>
+                        ${isOwn ? `<button class="btn btn-sm btn-link p-0" onclick="deleteMessage('${id}')" data匆
+
+                data-bs-toggle="tooltip" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
+                        ${isOwn ? `<span class="ms-2">${getStatusIcon(msg.status)}</span>` : ''}
+                    </div>
+                `;
+                messages.appendChild(div);
+            }
+
+            async function sendMessage(text, displayName, userId) {
+                if (text.trim()) {
+                    const messageRef = await window.db.collection('messages').add({
+                        text,
+                        createdAt: new Date(),
+                        displayName,
+                        reactions: [],
+                        status: 'sent',
+                        recipientIds: [],
+                    });
+                    await window.db.collection('users').doc(userId).update({
+                        isTyping: false,
+                        lastSeen: new Date(),
+                    });
+                    return messageRef.id;
+                }
+            }
+
+            async function addReaction(messageId) {
+                const messageRef = window.db.collection('messages').doc(messageId);
+                await messageRef.update({
+                    reactions: window.db.FieldValue.arrayUnion({ reaction: '👍' }),
+                });
+            }
+
+            async function deleteMessage(messageId) {
+                await window.db.collection('messages').doc(messageId).delete();
+            }
+
+            function updateOnlineUsers(users, currentDisplayName) {
+                const onlineUsers = document.getElementById('onlineUsers');
+                onlineUsers.innerHTML = '';
+                users.forEach(({ displayName, isTyping, lastSeen }) => {
+                    const li = document.createElement('li');
+                    li.className = 'list-group-item d-flex align-items-center';
+                    const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    li.innerHTML = `
+                        <span class="avatar me-2" style="${generateAvatar(displayName)}">${displayName[0]}</span>
+                        <div>
+                            <div>${displayName === currentDisplayName ? `${displayName} (You)` : displayName}</div>
+                            <small class="text-muted">Last seen: ${lastSeenTime}</small>
+                        </div>
+                        <i class="fas fa-circle text-success ms-auto ${isTyping ? 'fa-beat' : ''}"></i>
+                    `;
+                    onlineUsers.appendChild(li);
+                });
+            }
+
+            function showNotification(message) {
+                if (document.hidden && Notification.permission === 'granted') {
+                    new Notification('ProChat', {
+                        body: `${message.displayName}: ${message.text}`,
+                        icon: 'https://via.placeholder.com/32',
+                    });
+                }
+            }
+
+            // Expose global functions
             window.addReaction = addReaction;
+            window.deleteMessage = deleteMessage;
 
             // Load local messages
             const localMessages = loadMessagesLocally();
@@ -179,13 +230,38 @@
             const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             tooltipTriggerList.map((tooltipTriggerEl) => new bootstrap.Tooltip(tooltipTriggerEl));
 
-            // Show name prompt
-            nameModal.classList.add('d-block');
+            // Emoji picker
+            emojiButton.onclick = () => {
+                emojiPicker.classList.toggle('d-none');
+            };
+            emojiPicker.querySelectorAll('.emoji').forEach((emoji) => {
+                emoji.onclick = () => {
+                    messageInput.value += emoji.dataset.emoji;
+                    emojiPicker.classList.add('d-none');
+                    messageInput.focus();
+                };
+            });
+
+            // Request notification permission
+            if (Notification.permission === 'default') {
+                Notification.requestPermission();
+            }
+
+            // Handle name persistence
+            if (displayName) {
+                nameModal.classList.remove('d-block');
+                chatContainer.style.display = 'block';
+                userName.textContent = `You: ${displayName}`;
+                initializeChat();
+            } else {
+                nameInput.focus();
+            }
 
             // Handle name submission
             nameSubmit.onclick = () => {
                 displayName = nameInput.value.trim();
                 if (displayName) {
+                    localStorage.setItem('chatDisplayName', displayName);
                     nameModal.classList.remove('d-block');
                     chatContainer.style.display = 'block';
                     userName.textContent = `You: ${displayName}`;
@@ -195,9 +271,15 @@
                 }
             };
 
-            function initializeChat() {
+            // Handle clear name
+            clearName.onclick = () => {
+                localStorage.removeItem('chatDisplayName');
+                window.location.reload();
+            };
+
+            async function initializeChat() {
                 // Set user online
-                window.db.collection('users').doc(userId).set({
+                await window.db.collection('users').doc(userId).set({
                     displayName,
                     isTyping: false,
                     online: true,
@@ -223,6 +305,14 @@
                             const msg = { id: doc.id, ...doc.data() };
                             displayMessage(doc.id, msg, displayName);
                             fetchedMessages.push(msg);
+                            showNotification(msg);
+                            // Update status to delivered/read
+                            if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
+                                window.db.collection('messages').doc(doc.id).update({
+                                    status: document.hidden ? 'delivered' : 'read',
+                                    recipientIds: window.db.FieldValue.arrayUnion(userId),
+                                });
+                            }
                         });
                         saveMessagesLocally(fetchedMessages);
                         messages.scrollTop = messages.scrollHeight;
@@ -256,6 +346,7 @@
                     sendMessage(messageInput.value, displayName, userId);
                     messageInput.value = '';
                     isTyping = false;
+                    emojiPicker.classList.add('d-none');
                 };
 
                 // Handle typing
