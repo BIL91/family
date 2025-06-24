@@ -13,7 +13,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-        import { getFirestore } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
@@ -26,7 +26,21 @@
         };
 
         const app = initializeApp(firebaseConfig);
-        window.db = getFirestore(app); // Expose Firestore globally
+        window.db = getFirestore(app);
+        window.firestore = {
+            collection,
+            doc,
+            addDoc,
+            updateDoc,
+            deleteDoc,
+            onSnapshot,
+            query,
+            where,
+            orderBy,
+            limit,
+            getDocs,
+            arrayUnion: (value) => ({ _methodName: 'FieldValue.arrayUnion', elements: [value] }) // Simplified for reactions
+        };
     </script>
     <style>
         body { height: 100vh; overflow: hidden; }
@@ -144,7 +158,7 @@
                     const isOwn = msg.displayName === currentDisplayName;
                     const div = document.createElement('div');
                     div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
-                    const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                    const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
                     div.innerHTML = `
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="d-flex align-items-center">
@@ -166,7 +180,7 @@
 
                 async function sendMessage(text, displayName, userId) {
                     if (text.trim()) {
-                        const messageRef = await window.db.collection('messages').add({
+                        const messageRef = await window.firestore.addDoc(window.firestore.collection(window.db, 'messages'), {
                             text,
                             createdAt: new Date(),
                             displayName,
@@ -174,7 +188,7 @@
                             status: 'sent',
                             recipientIds: [],
                         });
-                        await window.db.collection('users').doc(userId).update({
+                        await window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
                             isTyping: false,
                             lastSeen: new Date(),
                         });
@@ -183,14 +197,20 @@
                 }
 
                 async function addReaction(messageId) {
-                    const messageRef = window.db.collection('messages').doc(messageId);
-                    await messageRef.update({
-                        reactions: window.db.FieldValue.arrayUnion({ reaction: '👍' }),
+                    const messageRef = window.firestore.doc(window.db, 'messages', messageId);
+                    await window.firestore.updateDoc(messageRef, {
+                        reactions: window.firestore.arrayUnion({ reaction: '👍' }),
                     });
                 }
 
                 async function deleteMessage(messageId) {
-                    await window.db.collection('messages').doc(messageId).delete();
+                    await window.firestore.deleteDoc(window.firestore.doc(window.db, 'messages', messageId));
+                }
+
+                async function isNameUnique(name) {
+                    const q = window.firestore.query(window.firestore.collection(window.db, 'users'), window.firestore.where('displayName', '==', name));
+                    const snapshot = await window.firestore.getDocs(q);
+                    return snapshot.empty;
                 }
 
                 function updateOnlineUsers(users, currentDisplayName) {
@@ -199,7 +219,7 @@
                     users.forEach(({ displayName, isTyping, lastSeen }) => {
                         const li = document.createElement('li');
                         li.className = 'list-group-item d-flex align-items-center';
-                        const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
                         li.innerHTML = `
                             <span class="avatar me-2" style="${generateAvatar(displayName)}">${displayName[0]}</span>
                             <div>
@@ -214,7 +234,7 @@
 
                 function showNotification(message) {
                     if (document.hidden && Notification.permission === 'granted') {
-                        const time = message.createdAt ? new Date(message.createdAt.toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+                        const time = message.createdAt ? new Date(message.createdAt.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
                         new Notification('ProChat', {
                             body: `${message.displayName}: ${message.text} (${time})`,
                             icon: 'https://via.placeholder.com/32',
@@ -271,7 +291,7 @@
                         let attempts = 0;
                         const maxAttempts = 50;
                         const interval = setInterval(() => {
-                            if (window.db) {
+                            if (window.db && window.firestore) {
                                 clearInterval(interval);
                                 resolve();
                             } else if (attempts >= maxAttempts) {
@@ -297,19 +317,26 @@
                 }
 
                 // Handle name submission
-                nameSubmit.onclick = () => {
-                    displayName = nameInput.value.trim();
-                    if (displayName) {
-                        localStorage.setItem('chatDisplayName', displayName);
-                        nameModal.classList.remove('d-block');
-                        nameModal.setAttribute('inert', '');
-                        nameModal.setAttribute('aria-hidden', 'true');
-                        chatContainer.style.display = 'block';
-                        userName.textContent = `You: ${displayName}`;
-                        waitForFirebase().then(initializeChat).catch((err) => console.error(err));
-                    } else {
+                nameSubmit.onclick = async () => {
+                    const inputName = nameInput.value.trim();
+                    if (!inputName) {
                         alert('Please enter a name!');
+                        return;
                     }
+                    await waitForFirebase();
+                    const isUnique = await isNameUnique(inputName);
+                    if (!isUnique) {
+                        alert('This name is already taken. Please choose another.');
+                        return;
+                    }
+                    displayName = inputName;
+                    localStorage.setItem('chatDisplayName', displayName);
+                    nameModal.classList.remove('d-block');
+                    nameModal.setAttribute('inert', '');
+                    nameModal.setAttribute('aria-hidden', 'true');
+                    chatContainer.style.display = 'block';
+                    userName.textContent = `You: ${displayName}`;
+                    initializeChat();
                 };
 
                 // Handle clear name
@@ -320,7 +347,8 @@
 
                 async function initializeChat() {
                     // Set user online
-                    await window.db.collection('users').doc(userId).set({
+                    await window.firestore.setDoc(window.firestore.doc(window.db, 'users', userId), {
+                        userId,
                         displayName,
                         isTyping: false,
                         online: true,
@@ -329,57 +357,61 @@
 
                     // Clean up on unload
                     window.addEventListener('beforeunload', () => {
-                        window.db.collection('users').doc(userId).update({
+                        window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
                             online: false,
                             lastSeen: new Date(),
                         });
                     });
 
                     // Fetch messages
-                    window.db.collection('messages')
-                        .orderBy('createdAt')
-                        .limit(50)
-                        .onSnapshot((snapshot) => {
-                            messages.innerHTML = '';
-                            const fetchedMessages = [];
-                            snapshot.forEach((doc) => {
-                                const msg = { id: doc.id, ...doc.data() };
-                                displayMessage(doc.id, msg, displayName);
-                                fetchedMessages.push(msg);
-                                showNotification(msg);
-                                // Update status to delivered/read
-                                if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
-                                    window.db.collection('messages').doc(doc.id).update({
-                                        status: document.hidden ? 'delivered' : 'read',
-                                        recipientIds: window.db.FieldValue.arrayUnion(userId),
-                                    });
-                                }
-                            });
-                            saveMessagesLocally(fetchedMessages);
-                            messages.scrollTop = messages.scrollHeight;
-                        });
-
-                    // Fetch online users and typing indicators
-                    window.db.collection('users')
-                        .where('online', '==', true)
-                        .onSnapshot((snapshot) => {
-                            const users = [];
-                            const typingUsers = [];
-                            snapshot.forEach((doc) => {
-                                const data = doc.data();
-                                users.push(data);
-                                if (data.isTyping && data.displayName !== displayName) {
-                                    typingUsers.push(data.displayName);
-                                }
-                            });
-                            updateOnlineUsers(users, displayName);
-                            if (typingUsers.length > 0) {
-                                typingIndicator.textContent = `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`;
-                                typingIndicator.classList.remove('d-none');
-                            } else {
-                                typingIndicator.classList.add('d-none');
+                    const messagesQuery = window.firestore.query(
+                        window.firestore.collection(window.db, 'messages'),
+                        window.firestore.orderBy('createdAt'),
+                        window.firestore.limit(50)
+                    );
+                    window.firestore.onSnapshot(messagesQuery, (snapshot) => {
+                        messages.innerHTML = '';
+                        const fetchedMessages = [];
+                        snapshot.forEach((doc) => {
+                            const msg = { id: doc.id, ...doc.data() };
+                            displayMessage(doc.id, msg, displayName);
+                            fetchedMessages.push(msg);
+                            showNotification(msg);
+                            // Update status to delivered/read
+                            if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
+                                window.firestore.updateDoc(window.firestore.doc(window.db, 'messages', doc.id), {
+                                    status: document.hidden ? 'delivered' : 'read',
+                                    recipientIds: window.firestore.arrayUnion(userId),
+                                });
                             }
                         });
+                        saveMessagesLocally(fetchedMessages);
+                        messages.scrollTop = messages.scrollHeight;
+                    });
+
+                    // Fetch online users and typing indicators
+                    const usersQuery = window.firestore.query(
+                        window.firestore.collection(window.db, 'users'),
+                        window.firestore.where('online', '==', true)
+                    );
+                    window.firestore.onSnapshot(usersQuery, (snapshot) => {
+                        const users = [];
+                        const typingUsers = [];
+                        snapshot.forEach((doc) => {
+                            const data = doc.data();
+                            users.push(data);
+                            if (data.isTyping && data.displayName !== displayName) {
+                                typingUsers.push(data.displayName);
+                            }
+                        });
+                        updateOnlineUsers(users, displayName);
+                        if (typingUsers.length > 0) {
+                            typingIndicator.textContent = `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`;
+                            typingIndicator.classList.remove('d-none');
+                        } else {
+                            typingIndicator.classList.add('d-none');
+                        }
+                    });
 
                     // Handle message submission
                     messageForm.onsubmit = (e) => {
@@ -395,7 +427,7 @@
                         const typing = messageInput.value.trim() !== '';
                         if (typing !== isTyping) {
                             isTyping = typing;
-                            window.db.collection('users').doc(userId).update({
+                            window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
                                 isTyping,
                                 lastSeen: new Date(),
                             });
