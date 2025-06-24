@@ -100,6 +100,13 @@
         .chat-header-status {
             font-size: 13px;
             color: var(--muted-text);
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .chat-header-status:hover {
+            text-decoration: underline;
         }
 
         .chat-messages {
@@ -225,20 +232,20 @@
             transform: scale(1.2);
         }
 
-        .name-modal {
+        .name-modal, .users-modal {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
             bottom: 0;
             background-color: rgba(0, 0, 0, 0.5);
-            display: flex;
+            display: none;
             align-items: center;
             justify-content: center;
             z-index: 1050;
         }
 
-        .name-modal-content {
+        .name-modal-content, .users-modal-content {
             background-color: white;
             border-radius: 8px;
             width: 100%;
@@ -247,7 +254,7 @@
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
         }
 
-        .name-modal-title {
+        .name-modal-title, .users-modal-title {
             font-size: 20px;
             font-weight: 600;
             margin-bottom: 16px;
@@ -264,7 +271,7 @@
             margin-bottom: 16px;
         }
 
-        .name-submit-btn {
+        .name-submit-btn, .users-close-btn {
             width: 100%;
             padding: 12px;
             background-color: var(--primary-color);
@@ -277,8 +284,20 @@
             transition: background-color 0.2s;
         }
 
-        .name-submit-btn:hover {
+        .name-submit-btn:hover, .users-close-btn:hover {
             background-color: #0066cc;
+        }
+
+        .users-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 16px;
+        }
+
+        .user-item {
+            padding: 8px 0;
+            font-size: 16px;
+            border-bottom: 1px solid #e4e6eb;
         }
 
         .unread-badge {
@@ -339,13 +358,22 @@
         </div>
     </div>
 
+    <!-- Active Users Modal -->
+    <div id="usersModal" class="users-modal" aria-hidden="true" inert>
+        <div class="users-modal-content">
+            <div class="users-modal-title">Active Users</div>
+            <div id="usersList" class="users-list"></div>
+            <button id="usersClose" class="users-close-btn">Close</button>
+        </div>
+    </div>
+
     <!-- Main Chat Container -->
     <div id="chatContainer" class="d-flex">
         <div class="chat-header">
             <div class="user-avatar" id="userAvatar"></div>
             <div class="chat-header-info">
                 <div class="chat-header-name">Public Chat</div>
-                <div class="chat-header-status">Online</div>
+                <div class="chat-header-status" id="onlineStatus" role="button" aria-label="View active users">Online</div>
             </div>
             <div class="ms-auto">
                 <button class="btn btn-link p-1" id="clearNameBtn" title="Clear Name" onclick="clearName()">
@@ -385,8 +413,12 @@
             const nameModal = document.getElementById('nameModal');
             const nameInput = document.getElementById('nameInput');
             const nameSubmit = document.getElementById('nameSubmit');
+            const usersModal = document.getElementById('usersModal');
+            const usersList = document.getElementById('usersList');
+            const usersClose = document.getElementById('usersClose');
             const chatContainer = document.getElementById('chatContainer');
             const userAvatar = document.getElementById('userAvatar');
+            const onlineStatus = document.getElementById('onlineStatus');
             const chatMessages = document.getElementById('chatMessages');
             const messageInput = document.getElementById('messageInput');
             const sendButton = document.getElementById('sendButton');
@@ -420,6 +452,8 @@
                 nameInput.addEventListener('keypress', (e) => {
                     if (e.key === 'Enter') handleNameSubmit();
                 });
+                onlineStatus.addEventListener('click', showUsersModal);
+                usersClose.addEventListener('click', hideUsersModal);
                 messageInput.addEventListener('input', () => {
                     sendButton.disabled = messageInput.value.trim() === '';
                     sendButton.classList.toggle('active', !sendButton.disabled);
@@ -441,6 +475,9 @@
                 document.addEventListener('click', (e) => {
                     if (!emojiPicker.contains(e.target) && e.target !== emojiButton) {
                         emojiPicker.classList.remove('show');
+                    }
+                    if (!usersModal.contains(e.target) && e.target !== onlineStatus && usersModal.style.display === 'flex') {
+                        hideUsersModal();
                     }
                 });
                 document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -509,6 +546,53 @@
                 );
                 const snapshot = await window.firestore.getDocs(q);
                 return snapshot.empty;
+            }
+
+            // Show active users modal
+            function showUsersModal() {
+                usersModal.style.display = 'flex';
+                usersModal.removeAttribute('inert');
+                usersModal.setAttribute('aria-hidden', 'false');
+                chatContainer.setAttribute('inert', '');
+                chatContainer.setAttribute('aria-hidden', 'true');
+                loadActiveUsers();
+            }
+
+            // Hide active users modal
+            function hideUsersModal() {
+                usersModal.style.display = 'none';
+                usersModal.setAttribute('inert', '');
+                usersModal.setAttribute('aria-hidden', 'true');
+                chatContainer.removeAttribute('inert');
+                chatContainer.setAttribute('aria-hidden', 'false');
+            }
+
+            // Load active users
+            function loadActiveUsers() {
+                const usersQuery = window.firestore.query(
+                    window.firestore.collection(window.db, 'users'),
+                    window.firestore.where('online', '==', true)
+                );
+                window.firestore.onSnapshot(usersQuery, (snapshot) => {
+                    usersList.innerHTML = '';
+                    const users = [];
+                    snapshot.forEach(doc => {
+                        const user = doc.data();
+                        if (user.displayName !== displayName) {
+                            users.push(user.displayName);
+                        }
+                    });
+                    if (users.length === 0) {
+                        usersList.innerHTML = '<div class="user-item">No other active users</div>';
+                    } else {
+                        users.forEach(name => {
+                            const userItem = document.createElement('div');
+                            userItem.className = 'user-item';
+                            userItem.textContent = name;
+                            usersList.appendChild(userItem);
+                        });
+                    }
+                });
             }
 
             // Initialize chat
@@ -694,9 +778,9 @@
                 sendButton.classList.toggle('active', !sendButton.disabled);
             }
 
-            // Show notification
+            // Show notification (only for received messages)
             function showNotification(message) {
-                if (!('Notification' in window)) return;
+                if (!('Notification' in window) || message.displayName === displayName) return;
                 if (document.hidden && Notification.permission === 'granted') {
                     const time = message.createdAt?.toDate
                         ? message.createdAt.toDate().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' })
@@ -708,7 +792,7 @@
                     });
                     notification.onclick = () => window.focus();
                 }
-                if (document.hidden && message.displayName !== displayName) {
+                if (document.hidden) {
                     unreadCount++;
                     updateUnreadBadge();
                 }
