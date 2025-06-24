@@ -3,23 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ProChat</title>
+    <title>ProChat - Enter Name</title>
     <!-- Bootstrap 5 CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <!-- Bootstrap 5 JS -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <!-- Font Awesome for Icons -->
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" rel="stylesheet">
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+        import { getFirestore, collection, query, where, getDocs } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
             authDomain: "family-97053.firebaseapp.com",
             projectId: "family-97053",
-            storageBucket: "family-97053.firebasestorage.app",
+            storageBucket: "family-97053.appspot.com",
             messagingSenderId: "681149504324",
             appId: "1:681149504324:web:2aa2678d0085ceb0111511",
             measurementId: "G-BJHE55FDVL"
@@ -27,414 +23,162 @@
 
         const app = initializeApp(firebaseConfig);
         window.db = getFirestore(app);
-        window.firestore = {
-            collection,
-            doc,
-            addDoc,
-            updateDoc,
-            deleteDoc,
-            onSnapshot,
-            query,
-            where,
-            orderBy,
-            limit,
-            getDocs,
-            arrayUnion: (value) => ({ _methodName: 'FieldValue.arrayUnion', elements: [value] }) // Simplified for reactions
-        };
+        window.firestore = { collection, query, where, getDocs };
     </script>
     <style>
-        body { height: 100vh; overflow: hidden; }
-        #chatContainer { display: none; height: 100vh; }
-        .chat-message { max-width: 70%; }
-        .own-message { background-color: #d1e7dd; }
-        .other-message { background-color: #f8f9fa; }
-        #onlineUsers { max-height: 100%; overflow-y: auto; }
-        .tooltip-inner { max-width: 200px; }
-        .avatar { width: 30px; height: 30px; border-radius: 50%; }
-        .emoji-picker { position: absolute; bottom: 70px; background: white; border: 1px solid #ccc; padding: 10px; }
-        #unreadBadge { display: none; }
+        :root {
+            --primary-color: #0084ff;
+            --secondary-color: #f0f2f5;
+            --text-color: #050505;
+            --muted-text: #65676b;
+        }
+
+        body {
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: 'Segoe UI', Helvetica, Arial, sans-serif;
+            background-color: var(--secondary-color);
+        }
+
+        .name-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1050;
+        }
+
+        .name-modal-content {
+            background-color: white;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 400px;
+            padding: 24px;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        }
+
+        .name-modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            text-align: center;
+            color: var(--text-color);
+        }
+
+        .name-input {
+            width: 100%;
+            padding: 12px 16px;
+            border: 1px solid #e4e6eb;
+            border-radius: 8px;
+            font-size: 16px;
+            margin-bottom: 16px;
+        }
+
+        .name-submit-btn {
+            width: 100%;
+            padding: 12px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .name-submit-btn:hover {
+            background-color: #0066cc;
+        }
     </style>
 </head>
-<body class="bg-light">
-    <!-- Name Prompt Modal -->
-    <div id="nameModal" class="modal fade" tabindex="-1" aria-labelledby="nameModalLabel">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="nameModalLabel">Welcome to ProChat</h5>
-                </div>
-                <div class="modal-body">
-                    <input id="nameInput" type="text" class="form-control" placeholder="Enter your name..." aria-label="Display name">
-                </div>
-                <div class="modal-footer">
-                    <button id="nameSubmit" class="btn btn-primary"><i class="fas fa-sign-in-alt"></i></button>
-                </div>
-            </div>
+<body>
+    <!-- Name Modal -->
+    <div id="nameModal" class="name-modal">
+        <div class="name-modal-content">
+            <div class="name-modal-title">Welcome to ProChat</div>
+            <input id="nameInput" type="text" class="name-input" placeholder="Enter your display name" autocomplete="off" aria-label="Display name">
+            <button id="nameSubmit" class="name-submit-btn">Continue</button>
         </div>
     </div>
 
-    <!-- Chat Interface -->
-    <div id="chatContainer" class="container-fluid h-100">
-        <div class="row h-100">
-            <!-- Online Users Sidebar -->
-            <div class="col-3 bg-white border-end p-0">
-                <div class="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-users me-2"></i>Online Users</h5>
-                    <button id="clearName" class="btn btn-sm btn-outline-light" data-bs-toggle="tooltip" title="Change Name"><i class="fas fa-user-edit"></i></button>
-                </div>
-                <ul id="onlineUsers" class="list-group list-group-flush"></ul>
-            </div>
-            <!-- Chat Area -->
-            <div class="col-9 d-flex flex-column h-100 p-0">
-                <div class="p-3 bg-primary text-white d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="fas fa-comment-dots me-2"></i>ProChat <span id="unreadBadge" class="badge bg-danger ms-2"></span></h5>
-                    <span id="userName" class="badge bg-secondary"></span>
-                </div>
-                <div id="messages" class="flex-grow-1 p-3 overflow-y-auto"></div>
-                <div id="typingIndicator" class="p-2 text-muted small d-none"></div>
-                <form id="messageForm" class="p-3 bg-white border-top d-flex position-relative">
-                    <button type="button" id="emojiButton" class="btn btn-link me-2"><i class="fas fa-smile"></i></button>
-                    <div id="emojiPicker" class="emoji-picker d-none">
-                        <span class="emoji" data-emoji="😊">😊</span>
-                        <span class="emoji" data-emoji="😂">😂</span>
-                        <span class="emoji" data-emoji="❤️">❤️</span>
-                        <span class="emoji" data-emoji="👍">👍</span>
-                    </div>
-                    <input id="messageInput" type="text" class="form-control me-2" placeholder="Type a message..." aria-label="Message">
-                    <button type="submit" id="sendButton" class="btn btn-primary"><i class="fas fa-paper-plane"></i></button>
-                </form>
-            </div>
-        </div>
-    </div>
-
-    <!-- App Logic -->
     <script>
         document.addEventListener('DOMContentLoaded', () => {
-            (function () {
-                // DOM Elements
-                const nameModal = document.getElementById('nameModal');
-                const nameInput = document.getElementById('nameInput');
-                const nameSubmit = document.getElementById('nameSubmit');
-                const chatContainer = document.getElementById('chatContainer');
-                const userName = document.getElementById('userName');
-                const messages = document.getElementById('messages');
-                const messageForm = document.getElementById('messageForm');
-                const messageInput = document.getElementById('messageInput');
-                const typingIndicator = document.getElementById('typingIndicator');
-                const emojiButton = document.getElementById('emojiButton');
-                const emojiPicker = document.getElementById('emojiPicker');
-                const clearName = document.getElementById('clearName');
-                const unreadBadge = document.getElementById('unreadBadge');
+            const nameModal = document.getElementById('nameModal');
+            const nameInput = document.getElementById('nameInput');
+            const nameSubmit = document.getElementById('nameSubmit');
 
-                // State
-                let displayName = localStorage.getItem('chatDisplayName') || '';
-                const userId = localStorage.getItem('chatUserId') || Math.random().toString(36).substring(2);
-                localStorage.setItem('chatUserId', userId);
-                let isTyping = false;
-                let unreadCount = 0;
+            // Generate or retrieve userId
+            const userId = localStorage.getItem('chatUserId') || Math.random().toString(36).substring(2);
+            localStorage.setItem('chatUserId', userId);
 
-                // Core Functions
-                function saveMessagesLocally(messages) {
-                    localStorage.setItem('chatMessages', JSON.stringify(messages.slice(-50)));
-                }
-
-                function loadMessagesLocally() {
-                    return JSON.parse(localStorage.getItem('chatMessages') || '[]');
-                }
-
-                function generateAvatar(displayName) {
-                    const hash = Array.from(displayName).reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                    const hue = hash % 360;
-                    return `background: hsl(${hue}, 70%, 50%); color: white; text-align: center; line-height: 30px;`;
-                }
-
-                function getStatusIcon(status) {
-                    if (status === 'read') return '<i class="fas fa-check-double text-primary"></i>';
-                    if (status === 'delivered') return '<i class="fas fa-check-double text-muted"></i>';
-                    return '<i class="fas fa-check text-muted"></i>';
-                }
-
-                function displayMessage(id, msg, currentDisplayName) {
-                    const isOwn = msg.displayName === currentDisplayName;
-                    const div = document.createElement('div');
-                    div.className = `chat-message mb-2 p-2 rounded ${isOwn ? 'own-message ms-auto' : 'other-message border'}`;
-                    const time = msg.createdAt ? new Date(msg.createdAt.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
-                    div.innerHTML = `
-                        <div class="d-flex justify-content-between align-items-center">
-                            <div class="d-flex align-items-center">
-                                <span class="avatar me-2" style="${generateAvatar(msg.displayName)}">${msg.displayName[0]}</span>
-                                <strong>${msg.displayName}</strong>
-                            </div>
-                            <small class="text-muted">${time}</small>
-                        </div>
-                        <p class="mb-1">${msg.text}</p>
-                        <div class="d-flex align-items-center">
-                            ${msg.reactions.map((r) => `<span class="me-1">${r.reaction}</span>`).join('')}
-                            <button class="btn btn-sm btn-link p-0 me-2" onclick="addReaction('${id}')" data-bs-toggle="tooltip" title="Like"><i class="fas fa-thumbs-up"></i></button>
-                            ${isOwn ? `<button class="btn btn-sm btn-link p-0" onclick="deleteMessage('${id}')" data-bs-toggle="tooltip" title="Delete"><i class="fas fa-trash"></i></button>` : ''}
-                            ${isOwn ? `<span class="ms-2">${getStatusIcon(msg.status)}</span>` : ''}
-                        </div>
-                    `;
-                    messages.appendChild(div);
-                }
-
-                async function sendMessage(text, displayName, userId) {
-                    if (text.trim()) {
-                        const messageRef = await window.firestore.addDoc(window.firestore.collection(window.db, 'messages'), {
-                            text,
-                            createdAt: new Date(),
-                            displayName,
-                            reactions: [],
-                            status: 'sent',
-                            recipientIds: [],
-                        });
-                        await window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
-                            isTyping: false,
-                            lastSeen: new Date(),
-                        });
-                        return messageRef.id;
-                    }
-                }
-
-                async function addReaction(messageId) {
-                    const messageRef = window.firestore.doc(window.db, 'messages', messageId);
-                    await window.firestore.updateDoc(messageRef, {
-                        reactions: window.firestore.arrayUnion({ reaction: '👍' }),
-                    });
-                }
-
-                async function deleteMessage(messageId) {
-                    await window.firestore.deleteDoc(window.firestore.doc(window.db, 'messages', messageId));
-                }
-
-                async function isNameUnique(name) {
-                    const q = window.firestore.query(window.firestore.collection(window.db, 'users'), window.firestore.where('displayName', '==', name));
-                    const snapshot = await window.firestore.getDocs(q);
-                    return snapshot.empty;
-                }
-
-                function updateOnlineUsers(users, currentDisplayName) {
-                    const onlineUsers = document.getElementById('onlineUsers');
-                    onlineUsers.innerHTML = '';
-                    users.forEach(({ displayName, isTyping, lastSeen }) => {
-                        const li = document.createElement('li');
-                        li.className = 'list-group-item d-flex align-items-center';
-                        const lastSeenTime = lastSeen ? new Date(lastSeen.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
-                        li.innerHTML = `
-                            <span class="avatar me-2" style="${generateAvatar(displayName)}">${displayName[0]}</span>
-                            <div>
-                                <div>${displayName === currentDisplayName ? `${displayName} (You)` : displayName}</div>
-                                <small class="text-muted">Last seen: ${lastSeenTime}</small>
-                            </div>
-                            <i class="fas fa-circle text-success ms-auto ${isTyping ? 'fa-beat' : ''}"></i>
-                        `;
-                        onlineUsers.appendChild(li);
-                    });
-                }
-
-                function showNotification(message) {
-                    if (document.hidden && Notification.permission === 'granted') {
-                        const time = message.createdAt ? new Date(message.createdAt.toDate()).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', timeZone: 'Africa/Harare' }) : '';
-                        new Notification('ProChat', {
-                            body: `${message.displayName}: ${message.text} (${time})`,
-                            icon: 'https://via.placeholder.com/32',
-                        });
-                    }
-                    if (document.hidden && message.displayName !== displayName) {
-                        unreadCount++;
-                        unreadBadge.textContent = unreadCount;
-                        unreadBadge.style.display = 'inline';
-                    }
-                }
-
-                // Expose global functions
-                window.addReaction = addReaction;
-                window.deleteMessage = deleteMessage;
-
-                // Load local messages
-                const localMessages = loadMessagesLocally();
-                localMessages.forEach((msg) => displayMessage(msg.id || Math.random().toString(36), msg, displayName));
-
-                // Initialize Bootstrap tooltips
-                const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-                tooltipTriggerList.forEach((el) => new bootstrap.Tooltip(el));
-
-                // Emoji picker
-                emojiButton.onclick = () => {
-                    emojiPicker.classList.toggle('d-none');
-                };
-                emojiPicker.querySelectorAll('.emoji').forEach((emoji) => {
-                    emoji.onclick = () => {
-                        messageInput.value += emoji.dataset.emoji;
-                        emojiPicker.classList.add('d-none');
-                        messageInput.focus();
-                    };
+            // Wait for Firebase to initialize
+            async function waitForFirebase() {
+                return new Promise((resolve, reject) => {
+                    let attempts = 0;
+                    const maxAttempts = 50;
+                    const interval = setInterval(() => {
+                        if (window.db && window.firestore) {
+                            clearInterval(interval);
+                            resolve();
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(interval);
+                            reject(new Error('Firebase not initialized'));
+                        }
+                        attempts++;
+                    }, 100);
                 });
+            }
 
-                // Request notification permission
-                if (Notification.permission === 'default') {
-                    Notification.requestPermission();
+            // Check if name is unique
+            async function isNameUnique(name) {
+                const q = window.firestore.query(
+                    window.firestore.collection(window.db, 'users'),
+                    window.firestore.where('displayName', '==', name)
+                );
+                const snapshot = await window.firestore.getDocs(q);
+                return snapshot.empty;
+            }
+
+            // Handle name submission
+            async function handleNameSubmit() {
+                const inputName = nameInput.value.trim();
+                if (!inputName) {
+                    alert('Please enter a name!');
+                    return;
                 }
 
-                // Reset unread count when tab becomes active
-                document.addEventListener('visibilitychange', () => {
-                    if (!document.hidden) {
-                        unreadCount = 0;
-                        unreadBadge.style.display = 'none';
-                        unreadBadge.textContent = '';
-                    }
-                });
-
-                // Wait for Firebase to initialize
-                async function waitForFirebase() {
-                    return new Promise((resolve, reject) => {
-                        let attempts = 0;
-                        const maxAttempts = 50;
-                        const interval = setInterval(() => {
-                            if (window.db && window.firestore) {
-                                clearInterval(interval);
-                                resolve();
-                            } else if (attempts >= maxAttempts) {
-                                clearInterval(interval);
-                                console.warn('Firebase failed to initialize');
-                                reject(new Error('Firebase not initialized'));
-                            }
-                            attempts++;
-                        }, 100);
-                    });
-                }
-
-                // Handle name persistence
-                if (displayName) {
-                    nameModal.setAttribute('inert', '');
-                    chatContainer.style.display = 'block';
-                    userName.textContent = `You: ${displayName}`;
-                    waitForFirebase().then(initializeChat).catch((err) => console.error(err));
-                } else {
-                    nameModal.classList.add('d-block');
-                    nameModal.removeAttribute('aria-hidden');
-                    nameInput.focus();
-                }
-
-                // Handle name submission
-                nameSubmit.onclick = async () => {
-                    const inputName = nameInput.value.trim();
-                    if (!inputName) {
-                        alert('Please enter a name!');
-                        return;
-                    }
+                try {
                     await waitForFirebase();
                     const isUnique = await isNameUnique(inputName);
                     if (!isUnique) {
                         alert('This name is already taken. Please choose another.');
                         return;
                     }
-                    displayName = inputName;
-                    localStorage.setItem('chatDisplayName', displayName);
-                    nameModal.classList.remove('d-block');
-                    nameModal.setAttribute('inert', '');
-                    nameModal.setAttribute('aria-hidden', 'true');
-                    chatContainer.style.display = 'block';
-                    userName.textContent = `You: ${displayName}`;
-                    initializeChat();
-                };
 
-                // Handle clear name
-                clearName.onclick = () => {
-                    localStorage.removeItem('chatDisplayName');
-                    window.location.reload();
-                };
-
-                async function initializeChat() {
-                    // Set user online
-                    await window.firestore.setDoc(window.firestore.doc(window.db, 'users', userId), {
-                        userId,
-                        displayName,
-                        isTyping: false,
-                        online: true,
-                        lastSeen: new Date(),
-                    });
-
-                    // Clean up on unload
-                    window.addEventListener('beforeunload', () => {
-                        window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
-                            online: false,
-                            lastSeen: new Date(),
-                        });
-                    });
-
-                    // Fetch messages
-                    const messagesQuery = window.firestore.query(
-                        window.firestore.collection(window.db, 'messages'),
-                        window.firestore.orderBy('createdAt'),
-                        window.firestore.limit(50)
-                    );
-                    window.firestore.onSnapshot(messagesQuery, (snapshot) => {
-                        messages.innerHTML = '';
-                        const fetchedMessages = [];
-                        snapshot.forEach((doc) => {
-                            const msg = { id: doc.id, ...doc.data() };
-                            displayMessage(doc.id, msg, displayName);
-                            fetchedMessages.push(msg);
-                            showNotification(msg);
-                            // Update status to delivered/read
-                            if (msg.displayName !== displayName && !msg.recipientIds.includes(userId)) {
-                                window.firestore.updateDoc(window.firestore.doc(window.db, 'messages', doc.id), {
-                                    status: document.hidden ? 'delivered' : 'read',
-                                    recipientIds: window.firestore.arrayUnion(userId),
-                                });
-                            }
-                        });
-                        saveMessagesLocally(fetchedMessages);
-                        messages.scrollTop = messages.scrollHeight;
-                    });
-
-                    // Fetch online users and typing indicators
-                    const usersQuery = window.firestore.query(
-                        window.firestore.collection(window.db, 'users'),
-                        window.firestore.where('online', '==', true)
-                    );
-                    window.firestore.onSnapshot(usersQuery, (snapshot) => {
-                        const users = [];
-                        const typingUsers = [];
-                        snapshot.forEach((doc) => {
-                            const data = doc.data();
-                            users.push(data);
-                            if (data.isTyping && data.displayName !== displayName) {
-                                typingUsers.push(data.displayName);
-                            }
-                        });
-                        updateOnlineUsers(users, displayName);
-                        if (typingUsers.length > 0) {
-                            typingIndicator.textContent = `${typingUsers.join(', ')} ${typingUsers.length > 1 ? 'are' : 'is'} typing...`;
-                            typingIndicator.classList.remove('d-none');
-                        } else {
-                            typingIndicator.classList.add('d-none');
-                        }
-                    });
-
-                    // Handle message submission
-                    messageForm.onsubmit = (e) => {
-                        e.preventDefault();
-                        sendMessage(messageInput.value, displayName, userId);
-                        messageInput.value = '';
-                        isTyping = false;
-                        emojiPicker.classList.add('d-none');
-                    };
-
-                    // Handle typing
-                    messageInput.oninput = () => {
-                        const typing = messageInput.value.trim() !== '';
-                        if (typing !== isTyping) {
-                            isTyping = typing;
-                            window.firestore.updateDoc(window.firestore.doc(window.db, 'users', userId), {
-                                isTyping,
-                                lastSeen: new Date(),
-                            });
-                        }
-                    };
+                    localStorage.setItem('chatDisplayName', inputName);
+                    window.location.href = 'chat.html';
+                } catch (error) {
+                    console.error('Error setting name:', error);
+                    alert('An error occurred. Please try again.');
                 }
-            })();
+            }
+
+            // Event listeners
+            nameSubmit.addEventListener('click', handleNameSubmit);
+            nameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') handleNameSubmit();
+            });
+
+            // Focus input
+            nameInput.focus();
         });
     </script>
 </body>
