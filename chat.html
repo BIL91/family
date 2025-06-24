@@ -11,7 +11,7 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-        import { getFirestore, collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, where, orderBy, limit, getDocs, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
@@ -28,6 +28,7 @@
         window.firestore = {
             collection,
             doc,
+            setDoc,
             addDoc,
             updateDoc,
             deleteDoc,
