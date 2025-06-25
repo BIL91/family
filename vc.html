@@ -380,17 +380,8 @@
         }
         @media (max-width: 768px) {
             .video-header { padding: 10px 12px; }
-            #localVideoContainer {
-                width: 90px;
-                height: 120px;
-                bottom: 70px;
-                right: 10px;
-            }
-            .control-btn {
-                width: 50px;
-                height: 50px;
-                font-size: 20px;
-            }
+            #localVideoContainer { width: 90px; height: 120px; bottom: 70px; right: 10px; }
+            .control-btn { width: 50px; height: 50px; font-size: 20px; }
             .control-buttons { gap: 12px; padding: 10px 12px; }
             .call-quality, .call-duration { top: 60px; font-size: 11px; }
         }
@@ -498,6 +489,7 @@
             let callQualityInterval = null;
             let callDurationInterval = null;
             let candidateBatch = [];
+            let hasSetAnswer = false;
 
             const configuration = {
                 iceServers: [
@@ -621,6 +613,7 @@
                         { userId, displayName, online: false, lastSeen: window.firestore.serverTimestamp(), lastActive: window.firestore.serverTimestamp() },
                         { merge: true }
                     );
+                    console.log('User status set to offline');
                 } catch (error) {
                     console.error('Error updating user status on unload:', error);
                 }
@@ -718,7 +711,7 @@
                                 usersList.appendChild(userItem);
                             });
                         }
-                        console.log('Active users updated:', Object.keys(activeUsers));
+                        console.log('Active users:', Object.keys(activeUsers));
                     }, error => {
                         console.error('Error loading active users:', error);
                         showError('Failed to load active users');
@@ -749,7 +742,7 @@
                     toggleAudio.innerHTML = isAudioMuted ? '<i class="bi bi-mic-mute-fill"></i>' : '<i class="bi bi-mic-fill"></i>';
                     toggleAudio.title = isAudioMuted ? 'Unmute Audio' : 'Mute Audio';
                     toggleAudio.style.backgroundColor = isAudioMuted ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
-                    console.log('Audio toggled:', isAudioMuted ? 'muted' : 'unmuted');
+                    console.log('Audio:', isAudioMuted ? 'muted' : 'unmuted');
                 }
             }
 
@@ -763,7 +756,7 @@
                     toggleVideo.title = isVideoOff ? 'Turn On Video' : 'Turn Off Video';
                     toggleVideo.style.backgroundColor = isVideoOff ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
                     localVideo.style.backgroundColor = isVideoOff ? 'black' : 'transparent';
-                    console.log('Video toggled:', isVideoOff ? 'off' : 'on');
+                    console.log('Video:', isVideoOff ? 'off' : 'on');
                 }
             }
 
@@ -836,9 +829,19 @@
                 }
             }
 
+            async function cleanParticipants() {
+                const participantsCollection = window.firestore.collection(window.db, `calls/${callId}/participants`);
+                const snapshot = await window.firestore.getDocs(participantsCollection);
+                for (const doc of snapshot.docs) {
+                    await window.firestore.deleteDoc(doc.ref);
+                }
+                console.log('Cleared stale participants');
+            }
+
             async function startVideoCall() {
                 try {
                     console.log('Starting video call for user:', userId);
+                    await cleanParticipants(); // Clear stale data
                     localStream = await navigator.mediaDevices.getUserMedia({
                         audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
                         video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 } }
@@ -848,7 +851,7 @@
                     console.log('Local stream set');
 
                     peerConnection = new RTCPeerConnection(configuration);
-                    console.log('PeerConnection created');
+                    console.log('PeerConnection created, signalingState:', peerConnection.signalingState);
 
                     peerConnection.onicecandidate = event => {
                         if (event.candidate) {
@@ -928,54 +931,56 @@
 
                     const participantsSnapshot = await window.firestore.getDocs(participantsCollection);
                     const otherParticipants = participantsSnapshot.docs.filter(doc => doc.id !== userId);
-                    const isInitiator = otherParticipants.length === 0;
+                    const isInitiator = otherParticipants.length === 0 || userId < otherParticipants[0].id;
+
+                    console.log('Participants:', participantsSnapshot.docs.map(doc => doc.id), 'isInitiator:', isInitiator);
 
                     if (isInitiator) {
-                        console.log('Initiator: creating offer');
+                        console.log('Initiator: creating offer, signalingState:', peerConnection.signalingState);
                         const offer = await peerConnection.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
                         await peerConnection.setLocalDescription(offer);
                         await window.firestore.setDoc(participantDoc, { offer }, { merge: true });
                         statusText.textContent = 'Waiting for others to join...';
-                        console.log('Offer saved');
+                        console.log('Offer saved, signalingState:', peerConnection.signalingState);
                     } else {
                         const participant = otherParticipants[0].data();
                         currentRemoteUserId = participant.userId;
-                        console.log('Joiner: processing offer from', currentRemoteUserId);
-                        if (participant.offer) {
+                        console.log('Joiner: processing offer from', currentRemoteUserId, 'signalingState:', peerConnection.signalingState);
+                        if (participant.offer && peerConnection.signalingState === 'stable') {
                             await peerConnection.setRemoteDescription(new RTCSessionDescription(participant.offer));
                             const answer = await peerConnection.createAnswer();
                             await peerConnection.setLocalDescription(answer);
                             await window.firestore.setDoc(participantDoc, { answer }, { merge: true });
-                            console.log('Answer saved');
+                            console.log('Answer saved, signalingState:', peerConnection.signalingState);
                         }
                     }
 
                     window.firestore.onSnapshot(participantsCollection, snapshot => {
                         snapshot.docChanges().forEach(change => {
-                            if (change.type === 'added' && change.doc.id !== userId) {
-                                const data = change.doc.data();
+                            const data = change.doc.data();
+                            if (change.type === 'added' && change.doc.id !== userId && !isInitiator) {
                                 currentRemoteUserId = data.userId;
-                                console.log('New participant:', currentRemoteUserId);
-                                if (data.offer && !peerConnection.currentRemoteDescription && !isInitiator) {
+                                console.log('New participant:', currentRemoteUserId, 'signalingState:', peerConnection.signalingState);
+                                if (data.offer && peerConnection.signalingState === 'stable') {
                                     peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
                                         .then(() => peerConnection.createAnswer())
                                         .then(answer => peerConnection.setLocalDescription(answer))
                                         .then(() => window.firestore.setDoc(participantDoc, { answer }, { merge: true }))
-                                        .then(() => console.log('Answered new offer'))
+                                        .then(() => console.log('Answered new offer, signalingState:', peerConnection.signalingState))
                                         .catch(error => {
                                             console.error('Error handling offer:', error);
-                                            showError('Signaling error');
+                                            showError('Signaling error: ' + error.message);
                                         });
                                 }
                             }
-                            if (change.type === 'modified' && change.doc.id !== userId) {
-                                const data = change.doc.data();
-                                if (data.answer && !peerConnection.currentRemoteDescription) {
+                            if (change.type === 'modified' && change.doc.id !== userId && isInitiator && !hasSetAnswer) {
+                                if (data.answer && peerConnection.signalingState === 'have-local-offer') {
+                                    hasSetAnswer = true;
                                     peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
-                                        .then(() => console.log('Answer received and set'))
+                                        .then(() => console.log('Answer received and set, signalingState:', peerConnection.signalingState))
                                         .catch(error => {
                                             console.error('Error setting answer:', error);
-                                            showError('Signaling error');
+                                            showError('Signaling error: ' + error.message);
                                         });
                                 }
                             }
@@ -1045,6 +1050,7 @@
                     remoteLabel.textContent = '';
                     remoteUserName.textContent = 'Public Video Call';
                     currentRemoteUserId = null;
+                    hasSetAnswer = false;
                     if (callQualityInterval) clearInterval(callQualityInterval);
                     if (callDurationInterval) clearInterval(callDurationInterval);
                     candidateBatch = [];
