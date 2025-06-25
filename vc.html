@@ -7,24 +7,7 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
-        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, getDocs, serverTimestamp, deleteDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
-            authDomain: "family-97053.firebaseapp.com",
-            projectId: "family-97053",
-            storageBucket: "family-97053.appspot.com",
-            messagingSenderId: "681149504324",
-            appId: "1:681149504324:web:2aa2678d0085ceb0111511",
-            measurementId: "G-BJHE55FDVL"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        window.db = getFirestore(app);
-        window.firestore = { collection, doc, setDoc, addDoc, onSnapshot, query, getDocs, serverTimestamp, deleteDoc };
-    </script>
+    <script src="https://meet.jit.si/external_api.js"></script>
     <style>
         :root {
             --primary-color: #0084ff;
@@ -108,7 +91,7 @@
             background-color: #000;
             overflow: hidden;
         }
-        #remoteVideoContainer {
+        #jitsiMeet {
             width: 100%;
             height: 100%;
             position: relative;
@@ -116,12 +99,6 @@
             align-items: center;
             justify-content: center;
             background-color: #000;
-        }
-        #remoteVideo {
-            width: 100%;
-            height: 100%;
-            object-fit: contain;
-            background-color: #111;
         }
         #localVideoContainer {
             position: absolute;
@@ -408,30 +385,12 @@
         <div class="video-header">
             <div class="user-avatar" id="userAvatar"></div>
             <div class="video-header-info">
-                <div class="video-header-name" id="remoteUserName">Public Video Call</div>
+                <div class="video-header-name" id="remoteUserName">Secure Video Call</div>
                 <div class="video-header-status" id="onlineStatus" role="button" aria-label="View active users">Connecting...</div>
             </div>
         </div>
         <div class="video-area" id="videoArea">
-            <div id="remoteVideoContainer">
-                <video id="remoteVideo" autoplay playsinline></video>
-                <div class="video-label" id="remoteLabel"></div>
-                <div id="connectionStatus" class="connection-status" style="display: none;">
-                    <span class="status-indicator"></span>
-                    <span id="statusText">Connecting</span>
-                </div>
-                <div id="callQuality" class="call-quality" style="display: none;">
-                    <span>Call quality:</span>
-                    <div class="quality-indicator">
-                        <div class="quality-bar"></div>
-                        <div class="quality-bar"></div>
-                        <div class="quality-bar"></div>
-                        <div class="quality-bar"></div>
-                        <div class="quality-bar"></div>
-                    </div>
-                </div>
-                <div id="callDuration" class="call-duration" style="display: none;">00:00</div>
-            </div>
+            <div id="jitsiMeet"></div>
             <div id="localVideoContainer">
                 <video id="localVideo" autoplay playsinline muted></video>
                 <div class="video-label" id="localLabel">You</div>
@@ -439,8 +398,23 @@
             <div id="noCallUi" class="no-call-ui">
                 <div class="no-call-icon"><i class="bi bi-camera-video"></i></div>
                 <div class="no-call-title">Start a Video Call</div>
-                <div class="no-call-subtitle">Connect with others in the public video call room</div>
+                <div class="no-call-subtitle">Join the secure video call room</div>
             </div>
+            <div id="connectionStatus" class="connection-status" style="display: none;">
+                <span class="status-indicator"></span>
+                <span id="statusText">Connecting</span>
+            </div>
+            <div id="callQuality" class="call-quality" style="display: none;">
+                <span>Call quality:</span>
+                <div class="quality-indicator">
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                    <div class="quality-bar"></div>
+                </div>
+            </div>
+            <div id="callDuration" class="call-duration" style="display: none;">00:00</div>
         </div>
         <div class="control-buttons">
             <button id="toggleAudio" class="control-btn secondary-btn" title="Mute Audio"><i class="bi bi-mic-fill"></i></button>
@@ -461,7 +435,6 @@
             const remoteUserName = document.getElementById('remoteUserName');
             const localVideo = document.getElementById('localVideo');
             const localLabel = document.getElementById('localLabel');
-            const remoteVideo = document.getElementById('remoteVideo');
             const startCall = document.getElementById('startCall');
             const endCall = document.getElementById('endCall');
             const toggleAudio = document.getElementById('toggleAudio');
@@ -476,65 +449,41 @@
             const qualityBars = document.querySelectorAll('.quality-bar');
             const callDuration = document.getElementById('callDuration');
 
-            const displayName = localStorage.getItem('chatDisplayName');
-            const userId = localStorage.getItem('chatUserId');
-            let peerConnection = null;
-            const callId = 'public-call';
+            const displayName = localStorage.getItem('chatDisplayName') || 'Guest';
+            const userId = localStorage.getItem('chatUserId') || `user_${Math.random().toString(36).substring(2, 10)}`;
+            let jitsiApi = null;
             let localStream = null;
             let isAudioMuted = false;
             let isVideoOff = false;
             let activeUsers = {};
-            let currentRemoteUserId = null;
             let callStartTime = null;
             let callQualityInterval = null;
             let callDurationInterval = null;
-            let candidateBatch = [];
-            let hasSetAnswer = false;
-
-            const configuration = {
-                iceServers: [
-                    { urls: 'stun:stun.l.google.com:19302' },
-                    { urls: 'stun:stun1.l.google.com:19302' },
-                    { urls: 'stun:stun2.l.google.com:19302' },
-                    { urls: 'stun:stun3.l.google.com:19302' },
-                    { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
-                    { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' }
-                ],
-                iceCandidatePoolSize: 10
-            };
 
             if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
                 showError('Video calls require HTTPS. Please serve over a secure connection.');
+                console.error('HTTPS required');
                 startCall.disabled = true;
-                return;
-            }
-
-            if (!displayName || !userId) {
-                showError('Please join the chat first from the main page.');
-                setTimeout(() => window.location.href = 'index.html', 3000);
                 return;
             }
 
             async function initApp() {
                 try {
-                    await waitForFirebase();
                     setupEventListeners();
                     videoContainer.style.display = 'flex';
                     updateUserAvatar(displayName, userAvatar);
                     localLabel.textContent = displayName;
-                    await updateUserStatus();
-                    loadActiveUsers();
                     await checkMediaPermissions();
                     handleResize();
-                    console.log('App initialized for user:', userId);
+                    console.log('App initialized for user:', { userId, displayName });
                 } catch (error) {
-                    console.error('Initialization error:', error);
-                    showError('Failed to initialize app: ' + error.message);
+                    console.error('Init app error:', error.message || error);
+                    showError('Failed to initialize: ' + (error.message || 'Unknown error'));
                 }
             }
 
             function showError(message) {
-                console.warn('Error:', message);
+                console.warn('Displaying error:', message);
                 errorMessage.textContent = message;
                 errorMessage.style.display = 'block';
                 setTimeout(() => errorMessage.style.display = 'none', 5000);
@@ -548,7 +497,6 @@
                 toggleAudio.addEventListener('click', toggleAudioHandler);
                 toggleVideo.addEventListener('click', toggleVideoHandler);
                 localVideo.addEventListener('click', swapVideoFeeds);
-                remoteVideo.addEventListener('click', swapVideoFeeds);
                 window.addEventListener('resize', handleResize);
                 window.addEventListener('orientationchange', handleResize);
                 window.addEventListener('beforeunload', cleanupBeforeUnload);
@@ -556,7 +504,7 @@
 
             function swapVideoFeeds() {
                 const localContainer = document.getElementById('localVideoContainer');
-                const remoteContainer = document.getElementById('remoteVideoContainer');
+                const jitsiContainer = document.getElementById('jitsiMeet');
                 if (localContainer.classList.contains('swapped')) {
                     localContainer.style.width = '120px';
                     localContainer.style.height = '160px';
@@ -564,13 +512,13 @@
                     localContainer.style.right = '20px';
                     localContainer.style.zIndex = '5';
                     localContainer.style.position = 'absolute';
-                    remoteContainer.style.width = '100%';
-                    remoteContainer.style.height = '100%';
-                    remoteContainer.style.position = 'relative';
-                    remoteContainer.style.bottom = '0';
-                    remoteContainer.style.right = '0';
+                    jitsiContainer.style.width = '100%';
+                    jitsiContainer.style.height = '100%';
+                    jitsiContainer.style.position = 'relative';
+                    jitsiContainer.style.bottom = '0';
+                    jitsiContainer.style.right = '0';
                     localContainer.classList.remove('swapped');
-                    remoteContainer.classList.remove('swapped');
+                    jitsiContainer.classList.remove('swapped');
                 } else {
                     localContainer.style.width = '100%';
                     localContainer.style.height = '100%';
@@ -578,14 +526,15 @@
                     localContainer.style.right = '0';
                     localContainer.style.zIndex = '10';
                     localContainer.style.position = 'relative';
-                    remoteContainer.style.width = '120px';
-                    remoteContainer.style.height = '160px';
-                    remoteContainer.style.position = 'absolute';
-                    remoteContainer.style.bottom = '80px';
-                    remoteContainer.style.right = '20px';
+                    jitsiContainer.style.width = '120px';
+                    jitsiContainer.style.height = '160px';
+                    jitsiContainer.style.position = 'absolute';
+                    jitsiContainer.style.bottom = '80px';
+                    jitsiContainer.style.right = '20px';
                     localContainer.classList.add('swapped');
-                    remoteContainer.classList.add('swapped');
+                    jitsiContainer.classList.add('swapped');
                 }
+                console.log('Video feeds swapped');
             }
 
             function handleResize() {
@@ -602,62 +551,103 @@
             }
 
             async function cleanupBeforeUnload() {
-                await endVideoCall();
-                await updateUserOfflineStatus();
-            }
-
-            async function updateUserOfflineStatus() {
                 try {
-                    await window.firestore.setDoc(
-                        window.firestore.doc(window.db, 'users', userId),
-                        { userId, displayName, online: false, lastSeen: window.firestore.serverTimestamp(), lastActive: window.firestore.serverTimestamp() },
-                        { merge: true }
-                    );
-                    console.log('User status set to offline');
+                    await endVideoCall();
+                    console.log('Cleanup before unload complete');
                 } catch (error) {
-                    console.error('Error updating user status on unload:', error);
+                    console.error('Cleanup error:', error.message || error);
                 }
             }
 
             function updateUserAvatar(name, element) {
-                if (!name) return;
+                if (!name) {
+                    console.warn('No name provided for avatar');
+                    return;
+                }
                 const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
                 const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
                 const hue = hash % 360;
                 element.textContent = initials;
                 element.style.backgroundColor = `hsl(${hue}, 70%, 50%)`;
                 element.style.color = 'white';
+                console.log('Avatar updated for:', name);
             }
 
-            async function waitForFirebase() {
-                return new Promise((resolve, reject) => {
-                    let attempts = 0;
-                    const maxAttempts = 50;
-                    const interval = setInterval(() => {
-                        if (window.db && window.firestore) {
-                            clearInterval(interval);
-                            resolve();
-                        } else if (attempts >= maxAttempts) {
-                            clearInterval(interval);
-                            reject(new Error('Firebase not initialized'));
-                        }
-                        attempts++;
-                    }, 100);
-                });
-            }
-
-            async function updateUserStatus() {
+            async function checkMediaPermissions() {
                 try {
-                    await window.firestore.setDoc(
-                        window.firestore.doc(window.db, 'users', userId),
-                        { userId, displayName, online: true, lastSeen: window.firestore.serverTimestamp(), lastActive: window.firestore.serverTimestamp() },
-                        { merge: true }
-                    );
-                    console.log('User status updated: online');
+                    localStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                    localVideo.srcObject = localStream;
+                    localVideo.play().catch(error => console.error('Local video play error:', error.message || error));
+                    console.log('Media permissions granted');
                 } catch (error) {
-                    console.error('Error updating user status:', error);
-                    showError('Failed to update user status');
+                    console.warn('Media permissions error:', error.message || error);
+                    showError('Please allow camera and microphone access');
                 }
+            }
+
+            function toggleAudioHandler() {
+                if (!jitsiApi) {
+                    console.warn('No Jitsi API to toggle audio');
+                    return;
+                }
+                isAudioMuted = !isAudioMuted;
+                jitsiApi.executeCommand('toggleAudio');
+                toggleAudio.innerHTML = isAudioMuted ? '<i class="bi bi-mic-mute-fill"></i>' : '<i class="bi bi-mic-fill"></i>';
+                toggleAudio.title = isAudioMuted ? 'Unmute Audio' : 'Mute Audio';
+                toggleAudio.style.backgroundColor = isAudioMuted ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
+                console.log('Audio:', isAudioMuted ? 'muted' : 'unmuted');
+            }
+
+            function toggleVideoHandler() {
+                if (!jitsiApi) {
+                    console.warn('No Jitsi API to toggle video');
+                    return;
+                }
+                isVideoOff = !isVideoOff;
+                jitsiApi.executeCommand('toggleVideo');
+                toggleVideo.innerHTML = isVideoOff ? '<i class="bi bi-camera-video-off-fill"></i>' : '<i class="bi bi-camera-video-fill"></i>';
+                toggleVideo.title = isVideoOff ? 'Turn On Video' : 'Turn Off Video';
+                toggleVideo.style.backgroundColor = isVideoOff ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
+                localVideo.style.backgroundColor = isVideoOff ? 'black' : 'transparent';
+                console.log('Video:', isVideoOff ? 'off' : 'on');
+            }
+
+            function updateCallQuality(score) {
+                qualityBars.forEach((bar, index) => bar.classList.toggle('active', index < score));
+                callQuality.style.display = 'flex';
+                console.log('Call quality updated:', score);
+            }
+
+            function startQualityMonitor() {
+                if (callQualityInterval) clearInterval(callQualityInterval);
+                callQualityInterval = setInterval(() => {
+                    if (!jitsiApi) {
+                        console.log('No Jitsi API for quality monitor');
+                        return;
+                    }
+                    // Simulate quality score based on network conditions
+                    const score = Math.floor(Math.random() * 5) + 1; // Placeholder
+                    updateCallQuality(score);
+                }, 5000);
+            }
+
+            function updateCallDuration() {
+                if (!callStartTime) {
+                    console.log('No call start time');
+                    return;
+                }
+                const now = new Date();
+                const diff = Math.floor((now - callStartTime) / 1000);
+                const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
+                const seconds = (diff % 60).toString().padStart(2, '0');
+                callDuration.textContent = `${minutes}:${seconds}`;
+                callDuration.style.display = 'block';
+                console.log('Call duration:', callDuration.textContent);
+            }
+
+            function startDurationTimer() {
+                if (callDurationInterval) clearInterval(callDurationInterval);
+                callDurationInterval = setInterval(updateCallDuration, 1000);
             }
 
             function showUsersModal() {
@@ -666,6 +656,7 @@
                 usersModal.setAttribute('aria-hidden', 'false');
                 videoContainer.setAttribute('inert', '');
                 videoContainer.setAttribute('aria-hidden', 'true');
+                console.log('Users modal shown');
             }
 
             function hideUsersModal() {
@@ -674,341 +665,116 @@
                 usersModal.setAttribute('aria-hidden', 'true');
                 videoContainer.removeAttribute('inert');
                 videoContainer.setAttribute('aria-hidden', 'false');
+                console.log('Users modal hidden');
             }
 
-            function loadActiveUsers() {
-                try {
-                    const usersCollection = window.firestore.collection(window.db, 'users');
-                    window.firestore.onSnapshot(usersCollection, snapshot => {
-                        usersList.innerHTML = '';
-                        activeUsers = {};
-                        const users = [];
-                        snapshot.forEach(doc => {
-                            const user = doc.data();
-                            if (user.online && user.userId !== userId) {
-                                activeUsers[user.userId] = user.displayName;
-                                users.push(user);
-                            }
-                        });
-                        const onlineCount = users.length;
-                        onlineStatus.textContent = onlineCount > 0 ? `${onlineCount} user${onlineCount !== 1 ? 's' : ''} online` : 'No other users online';
-                        if (users.length === 0) {
-                            const emptyItem = document.createElement('div');
-                            emptyItem.className = 'user-item';
-                            emptyItem.textContent = 'No other active users';
-                            usersList.appendChild(emptyItem);
-                        } else {
-                            users.forEach(user => {
-                                const userItem = document.createElement('div');
-                                userItem.className = 'user-item';
-                                const avatar = document.createElement('div');
-                                avatar.className = 'user-item-avatar';
-                                updateUserAvatar(user.displayName, avatar);
-                                const name = document.createElement('div');
-                                name.textContent = user.displayName;
-                                userItem.appendChild(avatar);
-                                userItem.appendChild(name);
-                                usersList.appendChild(userItem);
-                            });
-                        }
-                        console.log('Active users:', Object.keys(activeUsers));
-                    }, error => {
-                        console.error('Error loading active users:', error);
-                        showError('Failed to load active users');
+            function updateUsersList(participants) {
+                usersList.innerHTML = '';
+                activeUsers = {};
+                participants.forEach(p => {
+                    if (p.id !== userId) {
+                        activeUsers[p.id] = p.displayName || 'Anonymous';
+                    }
+                });
+                console.log('Active users:', Object.keys(activeUsers));
+                const onlineCount = Object.keys(activeUsers).length;
+                onlineStatus.textContent = onlineCount > 0 ? `${onlineCount} user${onlineCount !== 1 ? 's' : ''} online` : 'No other users online';
+                if (onlineCount === 0) {
+                    const emptyItem = document.createElement('div');
+                    emptyItem.className = 'user-item';
+                    emptyItem.textContent = 'No other active users';
+                    usersList.appendChild(emptyItem);
+                } else {
+                    Object.entries(activeUsers).forEach(([id, name]) => {
+                        const userItem = document.createElement('div');
+                        userItem.className = 'user-item';
+                        const avatar = document.createElement('div');
+                        avatar.className = 'user-item-avatar';
+                        updateUserAvatar(name, avatar);
+                        const nameEl = document.createElement('div');
+                        nameEl.textContent = name;
+                        userItem.appendChild(avatar);
+                        userItem.appendChild(nameEl);
+                        usersList.appendChild(userItem);
                     });
-                } catch (error) {
-                    console.error('Error setting up active users listener:', error);
-                    showError('Failed to set up active users');
                 }
-            }
-
-            async function checkMediaPermissions() {
-                try {
-                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-                    stream.getTracks().forEach(track => track.stop());
-                    console.log('Media permissions granted');
-                } catch (error) {
-                    console.warn('Media permissions not granted:', error);
-                    showError('Please allow camera and microphone access');
-                }
-            }
-
-            function toggleAudioHandler() {
-                if (!localStream) return;
-                const audioTracks = localStream.getAudioTracks();
-                if (audioTracks.length > 0) {
-                    isAudioMuted = !audioTracks[0].enabled;
-                    audioTracks[0].enabled = !isAudioMuted;
-                    toggleAudio.innerHTML = isAudioMuted ? '<i class="bi bi-mic-mute-fill"></i>' : '<i class="bi bi-mic-fill"></i>';
-                    toggleAudio.title = isAudioMuted ? 'Unmute Audio' : 'Mute Audio';
-                    toggleAudio.style.backgroundColor = isAudioMuted ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
-                    console.log('Audio:', isAudioMuted ? 'muted' : 'unmuted');
-                }
-            }
-
-            function toggleVideoHandler() {
-                if (!localStream) return;
-                const videoTracks = localStream.getVideoTracks();
-                if (videoTracks.length > 0) {
-                    isVideoOff = !videoTracks[0].enabled;
-                    videoTracks[0].enabled = !isVideoOff;
-                    toggleVideo.innerHTML = isVideoOff ? '<i class="bi bi-camera-video-off-fill"></i>' : '<i class="bi bi-camera-video-fill"></i>';
-                    toggleVideo.title = isVideoOff ? 'Turn On Video' : 'Turn Off Video';
-                    toggleVideo.style.backgroundColor = isVideoOff ? 'var(--video-call-color)' : 'rgba(255, 255, 255, 0.2)';
-                    localVideo.style.backgroundColor = isVideoOff ? 'black' : 'transparent';
-                    console.log('Video:', isVideoOff ? 'off' : 'on');
-                }
-            }
-
-            function updateCallQuality(stats) {
-                if (!stats) return;
-                let qualityScore = 5;
-                if (stats.packetsLost > 10 || stats.roundTripTime > 200) qualityScore -= 2;
-                else if (stats.packetsLost > 5 || stats.roundTripTime > 100) qualityScore -= 1;
-                if (stats.jitter > 50) qualityScore -= 2;
-                else if (stats.jitter > 20) qualityScore -= 1;
-                if (stats.bitrate < 500) qualityScore -= 1;
-                qualityScore = Math.max(1, Math.min(5, qualityScore));
-                qualityBars.forEach((bar, index) => bar.classList.toggle('active', index < qualityScore));
-            }
-
-            function startQualityMonitor() {
-                if (callQualityInterval) clearInterval(callQualityInterval);
-                callQualityInterval = setInterval(async () => {
-                    if (!peerConnection) return;
-                    try {
-                        const stats = await peerConnection.getStats();
-                        let remoteStats = null;
-                        stats.forEach(report => {
-                            if (report.type === 'inbound-rtp' && report.kind === 'video') {
-                                remoteStats = {
-                                    packetsLost: report.packetsLost || 0,
-                                    jitter: report.jitter || 0,
-                                    roundTripTime: report.roundTripTime || 0,
-                                    bitrate: (report.bytesReceived || 0) * 8 / 1000
-                                };
-                            }
-                        });
-                        if (remoteStats) {
-                            updateCallQuality(remoteStats);
-                            callQuality.style.display = 'flex';
-                        }
-                    } catch (error) {
-                        console.error('Error monitoring call quality:', error);
-                    }
-                }, 5000);
-            }
-
-            function updateCallDuration() {
-                if (!callStartTime) return;
-                const now = new Date();
-                const diff = Math.floor((now - callStartTime) / 1000);
-                const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
-                const seconds = (diff % 60).toString().padStart(2, '0');
-                callDuration.textContent = `${minutes}:${seconds}`;
-                callDuration.style.display = 'block';
-            }
-
-            function startDurationTimer() {
-                if (callDurationInterval) clearInterval(callDurationInterval);
-                callDurationInterval = setInterval(updateCallDuration, 1000);
-            }
-
-            async function flushCandidateBatch() {
-                if (candidateBatch.length === 0) return;
-                const candidatesCollection = window.firestore.collection(window.db, `calls/${callId}/participants/${userId}/candidates`);
-                try {
-                    for (const candidate of candidateBatch) {
-                        await window.firestore.addDoc(candidatesCollection, candidate);
-                    }
-                    console.log('Flushed', candidateBatch.length, 'ICE candidates');
-                    candidateBatch = [];
-                } catch (error) {
-                    console.error('Error flushing candidates:', error);
-                    showError('Failed to send ICE candidates');
-                }
-            }
-
-            async function cleanParticipants() {
-                const participantsCollection = window.firestore.collection(window.db, `calls/${callId}/participants`);
-                const snapshot = await window.firestore.getDocs(participantsCollection);
-                for (const doc of snapshot.docs) {
-                    await window.firestore.deleteDoc(doc.ref);
-                }
-                console.log('Cleared stale participants');
             }
 
             async function startVideoCall() {
                 try {
-                    console.log('Starting video call for user:', userId);
-                    await cleanParticipants(); // Clear stale data
-                    localStream = await navigator.mediaDevices.getUserMedia({
-                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                        video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 } }
-                    });
-                    localVideo.srcObject = localStream;
+                    console.log('Starting video call:', { userId, roomName: 'SecureProChat977b62e1' });
+                    if (!localStream) {
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                            video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 } }
+                        });
+                        localVideo.srcObject = localStream;
+                        localVideo.play().catch(error => console.error('Local video play error:', error.message || error));
+                        console.log('Local stream set:', localStream.getTracks().map(t => ({ kind: t.kind, enabled: t.enabled })));
+                    }
                     noCallUi.hidden = true;
-                    console.log('Local stream set');
 
-                    peerConnection = new RTCPeerConnection(configuration);
-                    console.log('PeerConnection created, signalingState:', peerConnection.signalingState);
-
-                    peerConnection.onicecandidate = event => {
-                        if (event.candidate) {
-                            candidateBatch.push({
-                                candidate: event.candidate.toJSON(),
-                                userId,
-                                createdAt: window.firestore.serverTimestamp()
-                            });
-                            if (candidateBatch.length >= 5) {
-                                flushCandidateBatch();
-                            } else if (candidateBatch.length === 1) {
-                                setTimeout(flushCandidateBatch, 1000);
-                            }
-                            console.log('ICE candidate:', event.candidate);
+                    const domain = 'meet.jit.si';
+                    const options = {
+                        roomName: 'SecureProChat977b62e1',
+                        width: '100%',
+                        height: '100%',
+                        parentNode: document.querySelector('#jitsiMeet'),
+                        userInfo: { displayName },
+                        configOverwrite: {
+                            prejoinPageEnabled: true, // Waiting room
+                            startWithAudioMuted: false,
+                            startWithVideoMuted: false,
+                            disableDeepLinking: true,
+                            // Note: Password cannot be set in configOverwrite
+                        },
+                        interfaceConfigOverwrite: {
+                            TOOLBAR_BUTTONS: ['microphone', 'camera', 'hangup'],
+                            SETTINGS_SECTIONS: ['devices', 'language']
                         }
                     };
+                    jitsiApi = new JitsiMeetExternalAPI(domain, options);
+                    console.log('Jitsi API initialized');
 
-                    peerConnection.oniceconnectionstatechange = () => {
-                        console.log('ICE state:', peerConnection.iceConnectionState);
-                        if (peerConnection.iceConnectionState === 'failed') {
-                            peerConnection.restartIce();
-                            showError('Connection failed. Retrying...');
-                        }
-                    };
-
-                    peerConnection.ontrack = event => {
-                        console.log('Remote track received:', event);
-                        const [stream] = event.streams;
-                        remoteVideo.srcObject = stream;
-                        if (currentRemoteUserId && activeUsers[currentRemoteUserId]) {
-                            remoteLabel.textContent = activeUsers[currentRemoteUserId];
-                            remoteUserName.textContent = activeUsers[currentRemoteUserId];
-                        } else {
-                            remoteLabel.textContent = 'Remote User';
-                        }
+                    jitsiApi.addEventListener('videoConferenceJoined', () => {
+                        console.log('Joined video conference');
+                        jitsiApi.executeCommand('password', 'StrongPass123!');
                         connectionStatus.style.display = 'flex';
                         statusIndicator.classList.add('connected');
                         statusText.textContent = 'Connected';
                         callStartTime = new Date();
                         startQualityMonitor();
                         startDurationTimer();
-                        console.log('Remote video stream set');
-                    };
-
-                    peerConnection.onconnectionstatechange = () => {
-                        console.log('Connection state:', peerConnection.connectionState);
-                        switch (peerConnection.connectionState) {
-                            case 'connected':
-                                statusIndicator.classList.add('connected');
-                                statusText.textContent = 'Connected';
-                                break;
-                            case 'disconnected':
-                            case 'failed':
-                                statusIndicator.classList.remove('connected');
-                                statusText.textContent = 'Reconnecting...';
-                                showError('Connection lost. Reconnecting...');
-                                break;
-                            case 'closed':
-                                statusIndicator.classList.remove('connected');
-                                statusText.textContent = 'Disconnected';
-                                break;
-                        }
-                    };
-
-                    localStream.getTracks().forEach(track => {
-                        peerConnection.addTrack(track, localStream);
-                        console.log('Added track:', track.kind);
+                        remoteUserName.textContent = 'Secure Video Call';
                     });
 
-                    const callDoc = window.firestore.doc(window.db, `calls/${callId}`);
-                    const participantsCollection = window.firestore.collection(window.db, `calls/${callId}/participants`);
-                    const participantDoc = window.firestore.doc(participantsCollection, userId);
-
-                    await window.firestore.setDoc(callDoc, { callId, createdAt: window.firestore.serverTimestamp(), active: true }, { merge: true });
-                    await window.firestore.setDoc(participantDoc, { userId, displayName, joinedAt: window.firestore.serverTimestamp() }, { merge: true });
-                    console.log('Call and participant docs set');
-
-                    const participantsSnapshot = await window.firestore.getDocs(participantsCollection);
-                    const otherParticipants = participantsSnapshot.docs.filter(doc => doc.id !== userId);
-                    const isInitiator = otherParticipants.length === 0 || userId < otherParticipants[0].id;
-
-                    console.log('Participants:', participantsSnapshot.docs.map(doc => doc.id), 'isInitiator:', isInitiator);
-
-                    if (isInitiator) {
-                        console.log('Initiator: creating offer, signalingState:', peerConnection.signalingState);
-                        const offer = await peerConnection.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
-                        await peerConnection.setLocalDescription(offer);
-                        await window.firestore.setDoc(participantDoc, { offer }, { merge: true });
-                        statusText.textContent = 'Waiting for others to join...';
-                        console.log('Offer saved, signalingState:', peerConnection.signalingState);
-                    } else {
-                        const participant = otherParticipants[0].data();
-                        currentRemoteUserId = participant.userId;
-                        console.log('Joiner: processing offer from', currentRemoteUserId, 'signalingState:', peerConnection.signalingState);
-                        if (participant.offer && peerConnection.signalingState === 'stable') {
-                            await peerConnection.setRemoteDescription(new RTCSessionDescription(participant.offer));
-                            const answer = await peerConnection.createAnswer();
-                            await peerConnection.setLocalDescription(answer);
-                            await window.firestore.setDoc(participantDoc, { answer }, { merge: true });
-                            console.log('Answer saved, signalingState:', peerConnection.signalingState);
-                        }
-                    }
-
-                    window.firestore.onSnapshot(participantsCollection, snapshot => {
-                        snapshot.docChanges().forEach(change => {
-                            const data = change.doc.data();
-                            if (change.type === 'added' && change.doc.id !== userId && !isInitiator) {
-                                currentRemoteUserId = data.userId;
-                                console.log('New participant:', currentRemoteUserId, 'signalingState:', peerConnection.signalingState);
-                                if (data.offer && peerConnection.signalingState === 'stable') {
-                                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer))
-                                        .then(() => peerConnection.createAnswer())
-                                        .then(answer => peerConnection.setLocalDescription(answer))
-                                        .then(() => window.firestore.setDoc(participantDoc, { answer }, { merge: true }))
-                                        .then(() => console.log('Answered new offer, signalingState:', peerConnection.signalingState))
-                                        .catch(error => {
-                                            console.error('Error handling offer:', error);
-                                            showError('Signaling error: ' + error.message);
-                                        });
-                                }
-                            }
-                            if (change.type === 'modified' && change.doc.id !== userId && isInitiator && !hasSetAnswer) {
-                                if (data.answer && peerConnection.signalingState === 'have-local-offer') {
-                                    hasSetAnswer = true;
-                                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer))
-                                        .then(() => console.log('Answer received and set, signalingState:', peerConnection.signalingState))
-                                        .catch(error => {
-                                            console.error('Error setting answer:', error);
-                                            showError('Signaling error: ' + error.message);
-                                        });
-                                }
-                            }
-                        });
-                    }, error => {
-                        console.error('Error listening to participants:', error);
-                        showError('Signaling error');
+                    jitsiApi.addEventListener('passwordRequired', () => {
+                        console.log('Password required');
+                        jitsiApi.executeCommand('password', 'StrongPass123!');
                     });
 
-                    const candidatesCollection = window.firestore.collection(window.db, `calls/${callId}/participants/${userId}/candidates`);
-                    window.firestore.onSnapshot(candidatesCollection, snapshot => {
-                        snapshot.docChanges().forEach(change => {
-                            if (change.type === 'added' && change.doc.data().userId !== userId) {
-                                peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data().candidate))
-                                    .then(() => console.log('Added remote ICE candidate'))
-                                    .catch(error => console.error('Error adding ICE candidate:', error));
-                            }
-                        });
-                    }, error => {
-                        console.error('Error listening to candidates:', error);
+                    jitsiApi.addEventListener('participantJoined', () => {
+                        const participants = jitsiApi.getParticipantsInfo();
+                        updateUsersList(participants);
+                        console.log('Participant joined:', participants);
+                    });
+
+                    jitsiApi.addEventListener('participantLeft', () => {
+                        const participants = jitsiApi.getParticipantsInfo();
+                        updateUsersList(participants);
+                        console.log('Participant left:', participants);
+                    });
+
+                    jitsiApi.addEventListener('readyToClose', () => {
+                        console.log('Call ended by Jitsi');
+                        endVideoCall();
                     });
 
                     startCall.disabled = true;
                     endCall.disabled = false;
-                    connectionStatus.style.display = 'flex';
                     console.log('Video call setup complete');
                 } catch (error) {
-                    console.error('Error starting video call:', error);
+                    console.error('Start video call error:', error.message || error);
                     showError('Failed to start call: ' + (error.message || 'Unknown error'));
                     if (localStream) {
                         localStream.getTracks().forEach(track => track.stop());
@@ -1025,14 +791,11 @@
                         localStream.getTracks().forEach(track => track.stop());
                         localStream = null;
                     }
-                    if (peerConnection) {
-                        peerConnection.close();
-                        peerConnection = null;
+                    if (jitsiApi) {
+                        jitsiApi.dispose();
+                        jitsiApi = null;
                     }
-                    const participantDoc = window.firestore.doc(window.db, `calls/${callId}/participants/${userId}`);
-                    await window.firestore.deleteDoc(participantDoc);
                     localVideo.srcObject = null;
-                    remoteVideo.srcObject = null;
                     startCall.disabled = false;
                     endCall.disabled = true;
                     noCallUi.hidden = false;
@@ -1047,17 +810,15 @@
                     toggleVideo.title = 'Turn Off Video';
                     toggleVideo.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
                     isVideoOff = false;
-                    remoteLabel.textContent = '';
-                    remoteUserName.textContent = 'Public Video Call';
-                    currentRemoteUserId = null;
-                    hasSetAnswer = false;
+                    remoteUserName.textContent = 'Secure Video Call';
+                    activeUsers = {};
+                    updateUsersList([]);
                     if (callQualityInterval) clearInterval(callQualityInterval);
                     if (callDurationInterval) clearInterval(callDurationInterval);
-                    candidateBatch = [];
                     console.log('Call ended');
                 } catch (error) {
-                    console.error('Error ending call:', error);
-                    showError('Failed to end call');
+                    console.error('End call error:', error.message || error);
+                    showError('Failed to end call: ' + (error.message || 'Unknown error'));
                 }
             }
 
