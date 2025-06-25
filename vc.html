@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ProChat - Video Call</title>
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <!-- Firebase SDK -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-app.js";
+        import { getFirestore, collection, doc, setDoc, addDoc, onSnapshot, query, where, getDocs, serverTimestamp, arrayUnion, arrayRemove, deleteDoc } from "https://www.gstatic.com/firebasejs/11.9.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCxSTx-XUWhcQ91Erv7tTs9RDqJHn7P-d8",
+            authDomain: "family-97053.firebaseapp.com",
+            projectId: "family-97053",
+            storageBucket: "family-97053.appspot.com",
+            messagingSenderId: "681149504324",
+            appId: "1:681149504324:web:2aa2678d0085ceb0111511",
+            measurementId: "G-BJHE55FDVL"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        window.db = getFirestore(app);
+        window.firestore = {
+            collection,
+            doc,
+            setDoc,
+            addDoc,
+            onSnapshot,
+            query,
+            where,
+            getDocs,
+            serverTimestamp,
+            arrayUnion,
+            arrayRemove,
+            deleteDoc
+        };
+    </script>
+    <style>
+        :root {
+            --primary-color: #0084ff;
+            --secondary-color: #f0f2f5;
+            --text-color: #050505;
+            --muted-text: #65676b;
+            --video-call-color: #ff0000;
+            --success-color: #31a24c;
+            --dark-bg: #1a1a1a;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            height: 100vh;
+            width: 100vw;
+            overflow: hidden;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background-color: var(--dark-bg);
+            margin: 0;
+            padding: 0;
+            color: white;
+            touch-action: manipulation;
+        }
+
+        #videoContainer {
+            display: none;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+            position: relative;
+        }
+
+        .video-header {
+            padding: 12px 16px;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background-color: #333;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #fff;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+
+        .video-header-info {
+            margin-left: 12px;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .video-header-name {
+            font-weight: 600;
+            margin-bottom: 2px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .video-header-status {
+            font-size: 13px;
+            color: var(--muted-text);
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .video-header-status:hover {
+            text-decoration: underline;
+        }
+
+        .video-area {
+            flex: 1;
+            width: 100%;
+            height: 100%;
+            position: relative;
+            background-color: #000;
+            overflow: hidden;
+        }
+
+        #remoteVideoContainer {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #000;
+        }
+
+        #remoteVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background-color: #111;
+        }
+
+        #localVideoContainer {
+            position: absolute;
+            bottom: 80px;
+            right: 20px;
+            width: 120px;
+            height: 160px;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 5;
+            transition: all 0.3s ease;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            background-color: #000;
+        }
+
+        #localVideoContainer:hover {
+            transform: scale(1.05);
+        }
+
+        #localVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .video-label {
+            position: absolute;
+            bottom: 8px;
+            left: 8px;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+            max-width: calc(100% - 16px);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .control-buttons {
+            padding: 12px 16px;
+            background-color: rgba(0, 0, 0, 0.7);
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            position: relative;
+            z-index: 10;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .control-btn {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border: none;
+            font-size: 24px;
+            transition: all 0.2s ease;
+            color: white;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .control-btn:hover {
+            transform: scale(1.1);
+        }
+
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+
+        .start-call-btn {
+            background-color: var(--success-color);
+        }
+
+        .start-call-btn:hover {
+            background-color: #27923e;
+            box-shadow: 0 0 15px rgba(49, 162, 76, 0.5);
+        }
+
+        .end-call-btn {
+            background-color: var(--video-call-color);
+        }
+
+        .end-call-btn:hover {
+            background-color: #cc0000;
+            box-shadow: 0 0 15px rgba(255, 0, 0, 0.5);
+        }
+
+        .secondary-btn {
+            background-color: rgba(255, 255, 255, 0.2);
+        }
+
+        .secondary-btn:hover {
+            background-color: rgba(255, 255, 255, 0.3);
+            box-shadow: 0 0 15px rgba(255, 255, 255, 0.2);
+        }
+
+        .call-quality {
+            position: absolute;
+            top: 70px;
+            left: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 6px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            z-index: 5;
+        }
+
+        .quality-indicator {
+            display: flex;
+            gap: 3px;
+        }
+
+        .quality-bar {
+            width: 3px;
+            height: 10px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 2px;
+        }
+
+        .quality-bar.active {
+            background-color: var(--success-color);
+        }
+
+        .users-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1050;
+            backdrop-filter: blur(5px);
+            -webkit-backdrop-filter: blur(5px);
+        }
+
+        .users-modal-content {
+            background-color: #2a2a2a;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 400px;
+            padding: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.5);
+            animation: modalFadeIn 0.3s ease;
+        }
+
+        @keyframes modalFadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .users-modal-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .users-close-btn {
+            width: 100%;
+            padding: 14px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s;
+            margin-top: 15px;
+        }
+
+        .users-close-btn:hover {
+            background-color: #0066cc;
+        }
+
+        .users-list {
+            max-height: 50vh;
+            overflow-y: auto;
+            margin-bottom: 15px;
+        }
+
+        .user-item {
+            padding: 12px 15px;
+            font-size: 16px;
+            border-bottom: 1px solid #3a3a3a;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .user-item:last-child {
+            border-bottom: none;
+        }
+
+        .user-item-avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: #3a3a3a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: white;
+            flex-shrink: 0;
+        }
+
+        .error-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #ff3b30;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            z-index: 1060;
+            display: none;
+            max-width: 80%;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: #ccc;
+        }
+
+        .status-indicator.connected {
+            background-color: var(--success-color);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(49, 162, 76, 0.7); }
+            70% { box-shadow: 0 0 0 8px rgba(49, 162, 76, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(49, 162, 76, 0); }
+        }
+
+        .call-duration {
+            position: absolute;
+            top: 70px;
+            right: 10px;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 6px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            z-index: 5;
+        }
+
+        .no-call-ui {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            padding: 20px;
+            text-align: center;
+            color: white;
+        }
+
+        .no-call-icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+            color: rgba(255, 255, 255, 0.3);
+        }
+
+        .no-call-title {
+            font-size: 22px;
+            font-weight: 600;
+            margin-bottom: 10px;
+        }
+
+        .no-call-subtitle {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.7);
+            margin-bottom: 30px;
+            max-width: 300px;
+        }
+
+        @media (max-width: 768px) {
+            .video-header {
+                padding: 10px 12px;
+            }
+
+            #localVideoContainer {
+                width: 90px;
+                height: 120px;
+                bottom: 70px;
+                right: 10px;
+            }
+
+            .control-btn {
+                width: 50px;
+                height: 50px;
+                font-size: 20px;
+            }
+
+            .control-buttons {
+                gap: 12px;
+                padding: 10px 12px;
+            }
+
+            .call-quality, .call-duration {
+                top: 60px;
+                font-size: 11px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            #localVideoContainer {
+                width: 80px;
+                height: 100px;
+                bottom: 60px;
+            }
+
+            .control-btn {
+                width: 48px;
+                height: 48px;
+            }
+
+            .users-modal-content {
+                width: 95%;
+                padding: 15px;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Active Users Modal -->
+    <div id="usersModal" class="users-modal" aria-hidden="true" inert>
+        <div class="users-modal-content">
+            <div class="users-modal-title">Active Users</div>
+            <div id="usersList" class="users-list"></div>
+            <button id="usersClose" class="users-close-btn">Close</button>
+        </div>
+    </div>
+
+    <!-- Error Message -->
+    <div id="errorMessage" class="error-message"></div>
+
+    <!-- Video Call Container -->
+    <div id="videoContainer" class="d-flex">
+        <div class="video-header">
+            <div class="user-avatar" id="userAvatar"></div>
+            <div class="video-header-info">
+                <div class="video-header-name" id="remoteUserName">Public Video Call</div>
+                <div class="video-header-status" id="onlineStatus" role="button" aria-label="View active users">Connecting...</div>
+            </div>
+        </div>
+        
+        <div class="video-area" id="videoArea">
+            <div id="remoteVideoContainer">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label" id="remoteLabel"></div>
+                <div id="connectionStatus" class="connection-status" style="display: none;">
+                    <span class="status-indicator"></span>
+                    <span id="statusText">Connecting</span>
+                </div>
+                <div id="callQuality" class="call-quality" style="display: none;">
+                    <span>Call quality:</span>
+                    <div class="quality-indicator">
+                        <div class="quality-bar"></div>
+                        <div class="quality-bar"></div>
+                        <div class="quality-bar"></div>
+                        <div class="quality-bar"></div>
+                        <div class="quality-bar"></div>
+                    </div>
+                </div>
+                <div id="callDuration" class="call-duration" style="display: none;">00:00</div>
+            </div>
+            
+            <div id="localVideoContainer">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <div class="video-label" id="localLabel">You</div>
+            </div>
+            
+            <div id="noCallUi" class="no-call-ui">
+                <div class="no-call-icon">
+                    <i class="bi bi-camera-video"></i>
+                </div>
+                <div class="no-call-title">Start a Video Call</div>
+                <div class="no-call-subtitle">Connect with others in the public video call room</div>
+            </div>
+        </div>
+        
+        <div class="control-buttons">
+            <button id="toggleAudio" class="control-btn secondary-btn" title="Mute Audio">
+                <i class="bi bi-mic-fill"></i>
+            </button>
+            <button id="toggleVideo" class="control-btn secondary-btn" title="Turn Off Video">
+                <i class="bi bi-camera-video-fill"></i>
+            </button>
+            <button id="startCall" class="control-btn start-call-btn" title="Start Call">
+                <i class="bi bi-telephone-fill"></i>
+            </button>
+            <button id="endCall" class="control-btn end-call-btn" title="End Call" disabled>
+                <i class="bi bi-telephone-x-fill"></i>
+            </button>
+            <button id="toggleUsers" class="control-btn secondary-btn" title="Active Users">
+                <i class="bi bi-people-fill"></i>
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            // DOM Elements
+            const usersModal = document.getElementById('usersModal');
+            const usersList = document.getElementById('usersList');
+            const usersClose = document.getElementById('usersClose');
+            const videoContainer = document.getElementById('videoContainer');
+            const userAvatar = document.getElementById('userAvatar');
+            const onlineStatus = document.getElementById('onlineStatus');
+            const remoteUserName = document.getElementById('remoteUserName');
+            const localVideo = document.getElementById('localVideo');
+            const localLabel = document.getElementById('localLabel');
+            const remoteVideo = document.getElementById('remoteVideo');
+            const remoteLabel = document.getElementById('remoteLabel');
+            const startCall = document.getElementById('startCall');
+            const endCall = document.getElementById('endCall');
+            const toggleAudio = document.getElementById('toggleAudio');
+            const toggleVideo = document.getElementById('toggleVideo');
+            const toggleUsers = document.getElementById('toggleUsers');
+            const errorMessage = document.getElementById('errorMessage');
+            const noCallUi = document.getElementById('noCallUi');
+            const connectionStatus = document.getElementById('connectionStatus');
+            const statusText = document.getElementById('statusText');
+            const statusIndicator = document.querySelector('.status-indicator');
+            const callQuality = document.getElementById('callQuality');
+            const qualityBars = document.querySelectorAll('.quality-bar');
+            const callDuration = document.getElementById('callDuration');
+
+            // State
+            const displayName = localStorage.getItem('chatDisplayName');
+            const userId = localStorage.getItem('chatUserId');
+            let peerConnection = null;
+            const callId = 'public-call';
+            let localStream = null;
+            let remoteStream = null;
+            let isAudioMuted = false;
+            let isVideoOff = false;
+            let activeUsers = {};
+            let currentRemoteUserId = null;
+            let callStartTime = null;
+            let callQualityInterval = null;
+            let callDurationInterval = null;
+            let candidateBatch = [];
+
+            // ICE servers configuration
+            const configuration = {
+                iceServers: [
+                    { urls: 'stun:stun.l.google.com:19302' },
+                    { urls: 'stun:stun1.l.google.com:19302' },
+                    {
+                        urls: 'turn:numb.viagenie.ca',
+                        credential: 'muazkh',
+                        username: 'webrtc@live.com'
+                    }
+                ],
+                iceCandidatePoolSize: 10
+            };
+
+            // Check HTTPS
+            if (location.protocol !== 'https:' && location.hostname !== 'localhost') {
+                showError('Video calls require HTTPS. Please serve over a secure connection.');
+                startCall.disabled = true;
+                return;
+            }
+
+            // Check authentication
+            if (!displayName || !userId) {
+                showError('Please join the chat first from the main page.');
+                setTimeout(() => window.location.href = 'index.html', 3000);
+                return;
+            }
+
+            // Initialize app
+            async function initApp() {
+                try {
+                    await waitForFirebase();
+                    setupEventListeners();
+                    videoContainer.style.display = 'flex';
+                    updateUserAvatar(displayName, userAvatar);
+                    localLabel.textContent = displayName;
+                    await updateUserStatus();
+                    loadActiveUsers();
+                    await checkMediaPermissions();
+                    handleResize();
+                } catch (error) {
+                    console.error('Initialization error:', error);
+                    showError('Failed to initialize app: ' + error.message);
+                }
+            }
+
+            // Show error message
+            function showError(message) {
+                errorMessage.textContent = message;
+                errorMessage.style.display = 'block';
+                setTimeout(() => errorMessage.style.display = 'none', 5000);
+            }
+
+            // Setup event listeners
+            function setupEventListeners() {
+                toggleUsers.addEventListener('click', showUsersModal);
+                usersClose.addEventListener('click', hideUsersModal);
+                startCall.addEventListener('click', startVideoCall);
+                endCall.addEventListener('click', endVideoCall);
+                toggleAudio.addEventListener('click', toggleAudioHandler);
+                toggleVideo.addEventListener('click', toggleVideoHandler);
+                localVideo.addEventListener('click', swapVideoFeeds);
+                remoteVideo.addEventListener('click', swapVideoFeeds);
+                window.addEventListener('resize', handleResize);
+                window.addEventListener('orientationchange', handleResize);
+                window.addEventListener('beforeunload', cleanupBeforeUnload);
+            }
+
+            // Swap video feeds
+            function swapVideoFeeds() {
+                const localContainer = document.getElementById('localVideoContainer');
+                const remoteContainer = document.getElementById('remoteVideoContainer');
+                if (localContainer.classList.contains('swapped')) {
+                    localContainer.style.width = '120px';
+                    localContainer.style.height = '160px';
+                    localContainer.style.bottom = '80px';
+                    localContainer.style.right = '20px';
+                    localContainer.style.zIndex = '5';
+                    localContainer.style.position = 'absolute';
+                    remoteContainer.style.width = '100%';
+                    remoteContainer.style.height = '100%';
+                    remoteContainer.style.position = 'relative';
+                    remoteContainer.style.bottom = '0';
+                    remoteContainer.style.right = '0';
+                    localContainer.classList.remove('swapped');
+                    remoteContainer.classList.remove('swapped');
+                } else {
+                    localContainer.style.width = '100%';
+                    localContainer.style.height = '100%';
+                    localContainer.style.bottom = '0';
+                    localContainer.style.right = '0';
+                    localContainer.style.zIndex = '10';
+                    localContainer.style.position = 'relative';
+                    remoteContainer.style.width = '120px';
+                    remoteContainer.style.height = '160px';
+                    remoteContainer.style.position = 'absolute';
+                    remoteContainer.style.bottom = '80px';
+                    remoteContainer.style.right = '20px';
+                    localContainer.classList.add('swapped');
+                    remoteContainer.classList.add('swapped');
+                }
+            }
+
+            // Handle resize
+            function handleResize() {
+                const localContainer = document.getElementById('localVideoContainer');
+                if (!localContainer.classList.contains('swapped')) {
+                    if (window.innerHeight > window.innerWidth) {
+                        localContainer.style.width = '90px';
+                        localContainer.style.height = '120px';
+                    } else {
+                        localContainer.style.width = '120px';
+                        localContainer.style.height = '90px';
+                    }
+                }
+            }
+
+            // Cleanup before unload
+            async function cleanupBeforeUnload() {
+                await endVideoCall();
+                await updateUserOfflineStatus();
+            }
+
+            // Update user offline status
+            async function updateUserOfflineStatus() {
+                try {
+                    await window.firestore.setDoc(
+                        window.firestore.doc(window.db, 'users', userId),
+                        {
+                            userId,
+                            displayName,
+                            online: false,
+                            lastSeen: window.firestore.serverTimestamp(),
+                            lastActive: window.firestore.serverTimestamp()
+                        },
+                        { merge: true }
+                    );
+                } catch (error) {
+                    console.error('Error updating user status on unload:', error);
+                }
+            }
+
+            // Update user avatar
+            function updateUserAvatar(name, element) {
+                if (!name) return;
+                const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
+                const hash = Array.from(name).reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                const hue = hash % 360;
+                element.textContent = initials;
+                element.style.backgroundColor = `hsl(${hue}, 70%, 50%)`;
+                element.style.color = 'white';
+            }
+
+            // Wait for Firebase
+            async function waitForFirebase() {
+                return new Promise((resolve, reject) => {
+                    let attempts = 0;
+                    const maxAttempts = 50;
+                    const interval = setInterval(() => {
+                        if (window.db && window.firestore) {
+                            clearInterval(interval);
+                            resolve();
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(interval);
+                            reject(new Error('Firebase not initialized'));
+                        }
+                        attempts++;
+                    }, 100);
+                });
+            }
+
+            // Update user status
+            async function updateUserStatus() {
+                try {
+                    await window.firestore.setDoc(
+                        window.firestore.doc(window.db, 'users', userId),
+                        {
+                            userId,
+                            displayName,
+                            online: true,
+                            lastSeen: window.firestore.serverTimestamp(),
+                            lastActive: window.firestore.serverTimestamp()
+                        },
+                        { merge: true }
+                    );
+                } catch (error) {
+                    console.error('Error updating user status:', error);
+                    showError('Failed to update user status: ' + error.message);
+                }
+            }
+
+            // Show users modal
+            function showUsersModal() {
+                usersModal.style.display = 'flex';
+                usersModal.removeAttribute('inert');
+                usersModal.setAttribute('aria-hidden', 'false');
+                videoContainer.setAttribute('inert', '');
+                videoContainer.setAttribute('aria-hidden', 'true');
+            }
+
+            // Hide users modal
+            function hideUsersModal() {
+                usersModal.style.display = 'none';
+                usersModal.setAttribute('inert', '');
+                usersModal.setAttribute('aria-hidden', 'true');
+                videoContainer.removeAttribute('inert');
+                videoContainer.setAttribute('aria-hidden', 'false');
+            }
+
+            // Load active users
+            function loadActiveUsers() {
+                try {
+                    const usersQuery = window.firestore.query(
+                        window.firestore.collection(window.db, 'users'),
+                        window.firestore.where('online', '==', true)
+                    );
+                    window.firestore.onSnapshot(usersQuery, (snapshot) => {
+                        usersList.innerHTML = '';
+                        activeUsers = {};
+                        const users = [];
+                        snapshot.forEach(doc => {
+                            const user = doc.data();
+                            activeUsers[user.userId] = user.displayName;
+                            if (user.userId !== userId) {
+                                users.push(user);
+                            }
+                        });
+                        const onlineCount = users.length;
+                        onlineStatus.textContent = onlineCount > 0 ? 
+                            `${onlineCount} user${onlineCount !== 1 ? 's' : ''} online` : 
+                            'No other users online';
+                        if (users.length === 0) {
+                            const emptyItem = document.createElement('div');
+                            emptyItem.className = 'user-item';
+                            emptyItem.textContent = 'No other active users';
+                            usersList.appendChild(emptyItem);
+                        } else {
+                            users.forEach(user => {
+                                const userItem = document.createElement('div');
+                                userItem.className = 'user-item';
+                                const avatar = document.createElement('div');
+                                avatar.className = 'user-item-avatar';
+                                updateUserAvatar(user.displayName, avatar);
+                                const name = document.createElement('div');
+                                name.textContent = user.displayName;
+                                userItem.appendChild(avatar);
+                                userItem.appendChild(name);
+                                usersList.appendChild(userItem);
+                            });
+                        }
+                    }, error => {
+                        console.error('Error loading active users:', error);
+                        showError('Failed to load active users: ' + error.message);
+                    });
+                } catch (error) {
+                    console.error('Error setting up active users listener:', error);
+                    showError('Failed to set up active users: ' + error.message);
+                }
+            }
+
+            // Check media permissions
+            async function checkMediaPermissions() {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+                    stream.getTracks().forEach(track => track.stop());
+                } catch (error) {
+                    console.warn('Media permissions not granted:', error);
+                    showError('Please allow camera and microphone access to start a call.');
+                }
+            }
+
+            // Toggle audio
+            function toggleAudioHandler() {
+                if (!localStream) return;
+                const audioTracks = localStream.getAudioTracks();
+                if (audioTracks.length > 0) {
+                    isAudioMuted = !audioTracks[0].enabled;
+                    audioTracks[0].enabled = !isAudioMuted;
+                    toggleAudio.innerHTML = isAudioMuted ? 
+                        '<i class="bi bi-mic-mute-fill"></i>' : 
+                        '<i class="bi bi-mic-fill"></i>';
+                    toggleAudio.title = isAudioMuted ? 'Unmute Audio' : 'Mute Audio';
+                    toggleAudio.style.backgroundColor = isAudioMuted ? 
+                        'var(--video-call-color)' : 
+                        'rgba(255, 255, 255, 0.2)';
+                }
+            }
+
+            // Toggle video
+            function toggleVideoHandler() {
+                if (!localStream) return;
+                const videoTracks = localStream.getVideoTracks();
+                if (videoTracks.length > 0) {
+                    isVideoOff = !videoTracks[0].enabled;
+                    videoTracks[0].enabled = !isVideoOff;
+                    toggleVideo.innerHTML = isVideoOff ? 
+                        '<i class="bi bi-camera-video-off-fill"></i>' : 
+                        '<i class="bi bi-camera-video-fill"></i>';
+                    toggleVideo.title = isVideoOff ? 'Turn On Video' : 'Turn Off Video';
+                    toggleVideo.style.backgroundColor = isVideoOff ? 
+                        'var(--video-call-color)' : 
+                        'rgba(255, 255, 255, 0.2)';
+                    localVideo.style.backgroundColor = isVideoOff ? 'black' : 'transparent';
+                }
+            }
+
+            // Update call quality
+            function updateCallQuality(stats) {
+                if (!stats) return;
+                let qualityScore = 5;
+                if (stats.packetsLost > 10 || stats.roundTripTime > 200) qualityScore -= 2;
+                else if (stats.packetsLost > 5 || stats.roundTripTime > 100) qualityScore -= 1;
+                if (stats.jitter > 50) qualityScore -= 2;
+                else if (stats.jitter > 20) qualityScore -= 1;
+                if (stats.bitrate < 500) qualityScore -= 1;
+                qualityScore = Math.max(1, Math.min(5, qualityScore));
+                qualityBars.forEach((bar, index) => {
+                    bar.classList.toggle('active', index < qualityScore);
+                });
+            }
+
+            // Start quality monitor
+            function startQualityMonitor() {
+                if (callQualityInterval) clearInterval(callQualityInterval);
+                callQualityInterval = setInterval(async () => {
+                    if (!peerConnection) return;
+                    try {
+                        const stats = await peerConnection.getStats();
+                        let remoteStats = null;
+                        stats.forEach(report => {
+                            if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                                remoteStats = {
+                                    packetsLost: report.packetsLost || 0,
+                                    jitter: report.jitter || 0,
+                                    roundTripTime: report.roundTripTime || 0,
+                                    bitrate: (report.bytesReceived || 0) * 8 / 1000
+                                };
+                            }
+                        });
+                        if (remoteStats) {
+                            updateCallQuality(remoteStats);
+                            callQuality.style.display = 'flex';
+                        }
+                    } catch (error) {
+                        console.error('Error monitoring call quality:', error);
+                    }
+                }, 5000);
+            }
+
+            // Update call duration
+            function updateCallDuration() {
+                if (!callStartTime) return;
+                const now = new Date();
+                const diff = Math.floor((now - callStartTime) / 1000);
+                const minutes = Math.floor(diff / 60).toString().padStart(2, '0');
+                const seconds = (diff % 60).toString().padStart(2, '0');
+                callDuration.textContent = `${minutes}:${seconds}`;
+                callDuration.style.display = 'block';
+            }
+
+            // Start duration timer
+            function startDurationTimer() {
+                if (callDurationInterval) clearInterval(callDurationInterval);
+                callDurationInterval = setInterval(updateCallDuration, 1000);
+            }
+
+            // Batch ICE candidates
+            async function flushCandidateBatch() {
+                if (candidateBatch.length === 0) return;
+                const candidatesCollection = window.firestore.collection(window.db, `calls/${callId}/participants/${userId}/candidates`);
+                try {
+                    for (const candidate of candidateBatch) {
+                        await window.firestore.addDoc(candidatesCollection, candidate);
+                    }
+                    candidateBatch = [];
+                } catch (error) {
+                    console.error('Error flushing candidates:', error);
+                }
+            }
+
+            // Start video call
+            async function startVideoCall() {
+                try {
+                    // Request media stream
+                    localStream = await navigator.mediaDevices.getUserMedia({
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                        video: { width: { ideal: 640 }, height: { ideal: 360 }, frameRate: { ideal: 30 } }
+                    });
+                    localVideo.srcObject = localStream;
+                    noCallUi.hidden = true;
+
+                    // Initialize peer connection
+                    peerConnection = new RTCPeerConnection(configuration);
+
+                    // Handle ICE candidates
+                    peerConnection.onicecandidate = event => {
+                        if (event.candidate) {
+                            candidateBatch.push({
+                                candidate: event.candidate.toJSON(),
+                                userId,
+                                createdAt: window.firestore.serverTimestamp()
+                            });
+                            if (candidateBatch.length >= 10) {
+                                flushCandidateBatch();
+                            } else if (candidateBatch.length === 1) {
+                                setTimeout(flushCandidateBatch, 2000);
+                            }
+                        }
+                    };
+
+                    // Handle ICE connection state
+                    peerConnection.oniceconnectionstatechange = async () => {
+                        if (peerConnection.iceConnectionState === 'failed') {
+                            try {
+                                await peerConnection.restartIce();
+                                showError('Connection failed. Retrying...');
+                            } catch (error) {
+                                console.error('Error restarting ICE:', error);
+                                showError('Failed to reconnect: ' + error.message);
+                            }
+                        }
+                    };
+
+                    // Handle remote streams
+                    peerConnection.ontrack = event => {
+                        const [stream] = event.streams;
+                        remoteStream = stream;
+                        remoteVideo.srcObject = stream;
+                        if (currentRemoteUserId && activeUsers[currentRemoteUserId]) {
+                            remoteLabel.textContent = activeUsers[currentRemoteUserId];
+                            remoteUserName.textContent = activeUsers[currentRemoteUserId];
+                        } else {
+                            remoteLabel.textContent = 'Remote User';
+                        }
+                        connectionStatus.style.display = 'flex';
+                        statusIndicator.classList.add('connected');
+                        statusText.textContent = 'Connected';
+                        callStartTime = new Date();
+                        startQualityMonitor();
+                        startDurationTimer();
+                    };
+
+                    // Handle connection state
+                    peerConnection.onconnectionstatechange = () => {
+                        switch (peerConnection.connectionState) {
+                            case 'connected':
+                                statusIndicator.classList.add('connected');
+                                statusText.textContent = 'Connected';
+                                break;
+                            case 'disconnected':
+                            case 'failed':
+                                statusIndicator.classList.remove('connected');
+                                statusText.textContent = 'Reconnecting...';
+                                showError('Connection lost. Reconnecting...');
+                                break;
+                            case 'closed':
+                                statusIndicator.classList.remove('connected');
+                                statusText.textContent = 'Disconnected';
+                                break;
+                        }
+                    };
+
+                    // Add tracks
+                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                    // Setup signaling
+                    const callDoc = window.firestore.doc(window.db, `calls/${callId}`);
+                    const participantDoc = window.firestore.doc(window.db, `calls/${callId}/participants/${userId}`);
+                    await window.firestore.setDoc(callDoc, {
+                        callId,
+                        createdAt: window.firestore.serverTimestamp(),
+                        active: true
+                    }, { merge: true });
+                    await window.firestore.setDoc(participantDoc, {
+                        userId,
+                        displayName,
+                        joinedAt: window.firestore.serverTimestamp()
+                    }, { merge: true });
+
+                    // Check for other participants
+                    const participantsCollection = window.firestore.collection(window.db, `calls/${callId}/participants`);
+                    const participantsSnapshot = await window.firestore.getDocs(participantsCollection);
+                    let otherParticipants = participantsSnapshot.docs.filter(doc => doc.id !== userId);
+                    let isInitiator = otherParticipants.length === 0;
+
+                    if (isInitiator) {
+                        const offer = await peerConnection.createOffer({
+                            offerToReceiveAudio: true,
+                            offerToReceiveVideo: true
+                        });
+                        await peerConnection.setLocalDescription(offer);
+                        await window.firestore.setDoc(participantDoc, { offer }, { merge: true });
+                        statusText.textContent = 'Waiting for others to join...';
+                    } else {
+                        const participant = otherParticipants[0].data();
+                        currentRemoteUserId = participant.userId;
+                        if (participant.offer) {
+                            await peerConnection.setRemoteDescription(new RTCSessionDescription(participant.offer));
+                            const answer = await peerConnection.createAnswer();
+                            await peerConnection.setLocalDescription(answer);
+                            await window.firestore.setDoc(participantDoc, { answer }, { merge: true });
+                        }
+                    }
+
+                    // Listen for remote answer
+                    window.firestore.onSnapshot(participantDoc, snapshot => {
+                        const data = snapshot.data();
+                        if (data && data.answer && !peerConnection.currentRemoteDescription) {
+                            peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)).catch(error => {
+                                console.error('Error setting remote answer:', error);
+                                showError('Signaling error: ' + error.message);
+                            });
+                        }
+                    }, error => {
+                        console.error('Error listening to participant:', error);
+                        showError('Signaling error: ' + error.message);
+                    });
+
+                    // Listen for remote candidates
+                    const candidatesCollection = window.firestore.collection(window.db, `calls/${callId}/participants/${userId}/candidates`);
+                    window.firestore.onSnapshot(candidatesCollection, snapshot => {
+                        snapshot.docChanges().forEach(change => {
+                            if (change.type === 'added' && change.doc.data().userId !== userId) {
+                                peerConnection.addIceCandidate(new RTCIceCandidate(change.doc.data().candidate)).catch(error => {
+                                    console.error('Error adding remote ICE candidate:', error);
+                                });
+                            }
+                        });
+                    }, error => {
+                        console.error('Error listening to candidates:', error);
+                    });
+
+                    // Listen for new participants
+                    window.firestore.onSnapshot(participantsCollection, snapshot => {
+                        snapshot.docChanges().forEach(change => {
+                            if (change.type === 'added' && change.doc.id !== userId) {
+                                const data = change.doc.data();
+                                currentRemoteUserId = data.userId;
+                                if (data.offer && !peerConnection.currentRemoteDescription) {
+                                    peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer)).then(() => {
+                                        return peerConnection.createAnswer();
+                                    }).then(answer => {
+                                        return peerConnection.setLocalDescription(answer);
+                                    }).then(() => {
+                                        return window.firestore.setDoc(participantDoc, { answer }, { merge: true });
+                                    }).catch(error => {
+                                        console.error('Error handling new participant:', error);
+                                        showError('Signaling error: ' + error.message);
+                                    });
+                                }
+                            }
+                        });
+                    }, error => {
+                        console.error('Error listening to participants:', error);
+                    });
+
+                    startCall.disabled = true;
+                    endCall.disabled = false;
+                    connectionStatus.style.display = 'flex';
+                } catch (error) {
+                    console.error('Error starting video call:', error);
+                    showError('Failed to start video call: ' + (error.message || 'Unknown error'));
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        localStream = null;
+                    }
+                    startCall.disabled = false;
+                    endCall.disabled = true;
+                }
+            }
+
+            // End video call
+            async function endVideoCall() {
+                try {
+                    if (localStream) {
+                        localStream.getTracks().forEach(track => track.stop());
+                        localStream = null;
+                    }
+                    if (peerConnection) {
+                        peerConnection.close();
+                        peerConnection = null;
+                    }
+                    const participantDoc = window.firestore.doc(window.db, `calls/${callId}/participants/${userId}`);
+                    await window.firestore.deleteDoc(participantDoc);
+                    localVideo.srcObject = null;
+                    remoteVideo.srcObject = null;
+                    startCall.disabled = false;
+                    endCall.disabled = true;
+                    noCallUi.hidden = false;
+                    connectionStatus.style.display = 'none';
+                    callQuality.style.display = 'none';
+                    callDuration.style.display = 'none';
+                    toggleAudio.innerHTML = '<i class="bi bi-mic-fill"></i>';
+                    toggleAudio.title = 'Mute Audio';
+                    toggleAudio.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                    isAudioMuted = false;
+                    toggleVideo.innerHTML = '<i class="bi bi-camera-video-fill"></i>';
+                    toggleVideo.title = 'Turn Off Video';
+                    toggleVideo.style.backgroundColor = 'rgba(255, 255, 255, 0.2)';
+                    isVideoOff = false;
+                    remoteLabel.textContent = '';
+                    remoteUserName.textContent = 'Public Video Call';
+                    currentRemoteUserId = null;
+                    if (callQualityInterval) {
+                        clearInterval(callQualityInterval);
+                        callQualityInterval = null;
+                    }
+                    if (callDurationInterval) {
+                        clearInterval(callDurationInterval);
+                        callDurationInterval = null;
+                    }
+                    candidateBatch = [];
+                } catch (error) {
+                    console.error('Error ending video call:', error);
+                    showError('Failed to end video call: ' + error.message);
+                }
+            }
+
+            // Initialize
+            initApp();
+        });
+    </script>
+</body>
+</html>
